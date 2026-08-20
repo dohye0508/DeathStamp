@@ -1,0 +1,5 @@
+build/
+bin/
+.geode/
+*.geode
+.cache/

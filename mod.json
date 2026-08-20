@@ -1,0 +1,49 @@
+{
+    "geode": "5.9.0",
+    "gd": {
+        "win": "2.2081",
+        "android": "2.2081"
+    },
+    "version": "v1.0.0",
+    "id": "com.yourname.deathstamp",
+    "name": "Death Stamp",
+    "developer": "yourname",
+    "description": "Noclip while testing your own levels, and auto-stamp a marker at every point you would have died (rising-edge detection). For level design / verify-skip testing only.",
+    "repository": "",
+    "tags": ["editor", "utility"],
+    "settings": {
+        "enabled": {
+            "name": "Death Stamp 활성화",
+            "description": "노클립 + 죽는 순간 스탬프 찍기를 켭니다.",
+            "type": "bool",
+            "default": false
+        },
+        "noclip": {
+            "name": "노클립",
+            "description": "죽음 판정이 나도 리셋되지 않고 계속 진행합니다.",
+            "type": "bool",
+            "default": true
+        },
+        "stamp-cooldown": {
+            "name": "스탬프 쿨다운 (초)",
+            "description": "같은 장애물에 연속으로 겹칠 때 스탬프가 도배되지 않도록 하는 최소 간격.",
+            "type": "float",
+            "default": 0.25,
+            "min": 0.05,
+            "max": 2.0
+        },
+        "marker-opacity": {
+            "name": "마커 투명도",
+            "type": "int",
+            "default": 160,
+            "min": 20,
+            "max": 255
+        },
+        "clear-on-new-attempt": {
+            "name": "새 시도마다 마커 초기화",
+            "description": "끄면 여러 번 플레이한 마커가 누적되어 히트맵처럼 쌓입니다.",
+            "type": "bool",
+            "default": false
+        }
+    }
+}
