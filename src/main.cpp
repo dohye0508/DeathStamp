@@ -136,6 +136,15 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
         } else {
             ghost->updatePlayerFrame(gm->getPlayerFrame());
         }
+
+        if (ghost->m_isUpsideDown != live->m_isUpsideDown) {
+            ghost->flipGravity(live->m_isUpsideDown, true);
+        }
+        if (ghost->m_vehicleSize != live->m_vehicleSize) {
+            ghost->m_vehicleSize = live->m_vehicleSize;
+            ghost->updatePlayerScale();
+        }
+        ghost->m_isGoingLeft = live->m_isGoingLeft;
     }
 
     void clearMarkers() {
