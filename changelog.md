@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.4.7
+
+- Settings popup shortened again — rows compressed a bit further
+- Marker Size now shows "N/A (icon)" instead of a bare "n/a" when it doesn't apply, so it's clear why right away instead of just looking broken
+- The opacity/size numbers next to their gauge bars are bigger and easier to read
+- X marker rebuilt again — it's now one single rasterized shape instead of separate rectangle pieces glued together, which should finally get rid of the seam/artifact look
+- Color picker's preview swatch moved closer to the wheel
+- Attempted fix for the icon marker showing a thick/doubled outline specifically in robot mode — stopped its idle animation from continuing to run on the frozen marker
+
 ## v1.4.6
 
 - Moved Marker Size below Opacity in the settings popup

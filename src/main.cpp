@@ -10,6 +10,7 @@
 #include <Geode/cocos/extensions/GUI/CCControlExtension/CCScale9Sprite.h>
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 using namespace geode::prelude;
 
@@ -127,12 +128,6 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
             return nullptr;
         }
 
-        // NOTE: deliberately NOT calling stopAllActions()/unscheduleUpdate()
-        // here — AttemptPlaybackMod's own createNewGhost() doesn't either.
-        // Freezing the node immediately after create() risks catching it mid
-        // spawn-in transition, before it ever becomes visible. m_isDead is
-        // what actually halts a player's own physics/simulation each frame,
-        // which is the correct way to pin it in place.
         ghost->disablePlayerControls();
         ghost->m_isDead = true;
         ghost->setVisible(true);
@@ -155,6 +150,16 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
         // full opacity regardless of what was set on the ghost earlier.
         ghost->setOpacity(static_cast<GLubyte>(opacity));
 
+        // Stopped only now, after every property above is already set the
+        // way we want — robot/spider's idle animation keeps subtly scaling
+        // the body (their signature "wobble"), and left running on a
+        // translucent marker that reads as a thick/doubled outline. Safe to
+        // cut here (unlike right after create()) since we're not relying on
+        // any further action to fade the marker in — we already forced its
+        // final look ourselves.
+        ghost->stopAllActions();
+        ghost->unscheduleAllSelectors();
+
         // Add to the exact same parent the live player is in, so its
         // position needs no coordinate-space conversion at all. Nudged
         // slightly forward — see deathNudgeOffset_.
@@ -167,8 +172,9 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
     // loaded, since this mod's color picker popup uses that exact sprite
     // sheet) instead of a hand-drawn ring — a hand-drawn CCDrawNode circle
     // came out visibly rough/faceted at marker size in this GD build no
-    // matter how many segments it was built from. The "X" is built from
-    // plain rectangles for the same reason (see createXMarker_).
+    // matter how many segments it was built from. "X" is a shape we
+    // rasterize into a texture ourselves (see xShapeTexture_), for the
+    // same reason.
     CCNode* createShapeMarker(PlayerObject* player, std::string const& style) {
         int opacity = Mod::get()->getSettingValue<int64_t>("marker-opacity");
         ccColor3B color = readMarkerColor();
@@ -195,47 +201,61 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
         return marker;
     }
 
-    // The X is three plain rectangles (one full bar, the other bar split
-    // around it), rotated 45° as a group — not two full diagonal bars laid
-    // across each other, which would double up their translucent fill where
-    // they cross and show up as a visibly darker square at the center. Each
-    // bar is a real CCSprite stretched from a 1x1 texture (see
-    // whitePixelTexture_), not hand-drawn geometry.
+    // A single sprite from one software-rasterized texture, not multiple
+    // separate rectangle sprites — three separate CCSprites glued together
+    // (one earlier attempt at this) still showed seams/artifacts at their
+    // shared edges. Rasterizing the whole X into one texture ourselves means
+    // there's only ever one draw, one edge, no seam to go wrong.
     static CCNode* createXMarker_(ccColor3B color, int opacity) {
-        constexpr float armLength = 9.f;
-        constexpr float thickness = 4.f;
-        constexpr float half = thickness / 2.f;
-
-        auto* root = CCNode::create();
-        root->setRotation(45.f);
-
-        auto addBar = [&](float width, float height, float x, float y) {
-            auto* bar = CCSprite::createWithTexture(whitePixelTexture_());
-            bar->setColor(color);
-            bar->setOpacity(static_cast<GLubyte>(opacity));
-            bar->setScaleX(width);
-            bar->setScaleY(height);
-            bar->setPosition(CCPoint(x, y));
-            root->addChild(bar);
-        };
-
-        addBar(armLength * 2.f, thickness, 0.f, 0.f);                          // full bar
-        addBar(thickness, armLength - half, 0.f, (armLength + half) / 2.f);    // other bar, top half
-        addBar(thickness, armLength - half, 0.f, -(armLength + half) / 2.f);   // other bar, bottom half
-
-        return root;
+        auto* sprite = CCSprite::createWithTexture(xShapeTexture_());
+        sprite->setColor(color);
+        sprite->setOpacity(static_cast<GLubyte>(opacity));
+        return sprite;
     }
 
-    // A single reusable 1x1 white texture used to build solid-color shapes —
-    // never released, since it's a tiny (4-byte) cache meant to live for the
-    // whole process.
-    static CCTexture2D* whitePixelTexture_() {
+    // Built once, cached forever (it's tiny and the same shape every time).
+    // Supersampled 4x for smooth diagonal edges, since this GD build's own
+    // line/polygon drawing didn't antialias cleanly at this size no matter
+    // what was tried.
+    static CCTexture2D* xShapeTexture_() {
         static CCTexture2D* tex = nullptr;
-        if (!tex) {
-            unsigned char pixel[4] = {255, 255, 255, 255};
-            tex = new CCTexture2D();
-            tex->initWithData(pixel, kCCTexture2DPixelFormat_RGBA8888, 1, 1, CCSize(1.f, 1.f));
+        if (tex) return tex;
+
+        constexpr int size = 40;
+        constexpr float center = (size - 1) / 2.f;
+        constexpr float armLength = 16.f;
+        constexpr float halfThickness = 3.f;
+        constexpr int supersample = 4;
+        constexpr float kInvSqrt2 = 0.70710678f;
+
+        std::vector<unsigned char> pixels(size * size * 4, 0);
+        for (int py = 0; py < size; py++) {
+            for (int px = 0; px < size; px++) {
+                int hits = 0;
+                for (int sy = 0; sy < supersample; sy++) {
+                    for (int sx = 0; sx < supersample; sx++) {
+                        float fx = px + (sx + 0.5f) / supersample - center;
+                        float fy = py + (sy + 0.5f) / supersample - center;
+                        float distToDiag1 = fabsf(fx - fy) * kInvSqrt2;
+                        float distToDiag2 = fabsf(fx + fy) * kInvSqrt2;
+                        bool onArm = distToDiag1 <= halfThickness || distToDiag2 <= halfThickness;
+                        bool withinLength = (fx * fx + fy * fy) <= (armLength * armLength);
+                        if (onArm && withinLength) hits++;
+                    }
+                }
+                int idx = (py * size + px) * 4;
+                pixels[idx + 0] = 255;
+                pixels[idx + 1] = 255;
+                pixels[idx + 2] = 255;
+                pixels[idx + 3] = static_cast<unsigned char>(255 * hits / (supersample * supersample));
+            }
         }
+
+        tex = new CCTexture2D();
+        tex->initWithData(
+            pixels.data(), kCCTexture2DPixelFormat_RGBA8888,
+            size, size, CCSize(static_cast<float>(size), static_cast<float>(size))
+        );
         return tex;
     }
 
@@ -350,14 +370,14 @@ protected:
         // until you back out of the popup — this gives an always-visible
         // live swatch instead.
         auto* previewLabel = CCLabelBMFont::create("Preview", "bigFont.fnt");
-        previewLabel->setPosition({-140.f, 25.f});
+        previewLabel->setPosition({-100.f, 25.f});
         previewLabel->setScale(0.45f);
         root->addChild(previewLabel);
 
         auto* previewBg = CCScale9Sprite::create("square02b_001.png");
         previewBg->setContentSize({60.f, 60.f});
         previewBg->setColor(readMarkerColor());
-        previewBg->setPosition({-140.f, -30.f});
+        previewBg->setPosition({-100.f, -30.f});
         m_preview = previewBg;
         root->addChild(m_preview);
 
@@ -428,12 +448,12 @@ protected:
         m_enabledCheckbox = CCMenuItemSpriteExtra::create(
             CCSprite::create(), this, menu_selector(DeathStampSettingsPopup::onToggleEnabled)
         );
-        m_enabledCheckbox->setPosition({labelX + 8.f, 120.f});
+        m_enabledCheckbox->setPosition({labelX + 8.f, 104.f});
         m_menu->addChild(m_enabledCheckbox);
 
         auto* enabledLabel = CCLabelBMFont::create("Enabled", "bigFont.fnt");
         enabledLabel->setAnchorPoint({0.f, 0.5f});
-        enabledLabel->setPosition({labelX + 24.f, 120.f});
+        enabledLabel->setPosition({labelX + 24.f, 104.f});
         enabledLabel->setScale(labelScale);
         root->addChild(enabledLabel);
 
@@ -441,15 +461,15 @@ protected:
         // option, so adding more shapes later doesn't need a wider popup.
         auto* styleLabel = CCLabelBMFont::create("Marker Shape", "bigFont.fnt");
         styleLabel->setAnchorPoint({0.f, 0.5f});
-        styleLabel->setPosition({labelX, 88.f});
+        styleLabel->setPosition({labelX, 76.f});
         styleLabel->setScale(labelScale);
         root->addChild(styleLabel);
 
-        m_menu->addChild(makeArrow_(false, 88.f, menu_selector(DeathStampSettingsPopup::onStylePrev)));
-        m_menu->addChild(makeArrow_(true, 88.f, menu_selector(DeathStampSettingsPopup::onStyleNext)));
+        m_menu->addChild(makeArrow_(false, 76.f, menu_selector(DeathStampSettingsPopup::onStylePrev)));
+        m_menu->addChild(makeArrow_(true, 76.f, menu_selector(DeathStampSettingsPopup::onStyleNext)));
 
         m_styleValueLabel = CCLabelBMFont::create("", "goldFont.fnt");
-        m_styleValueLabel->setPosition({70.f, 88.f});
+        m_styleValueLabel->setPosition({70.f, 76.f});
         m_styleValueLabel->setScale(0.5f);
         root->addChild(m_styleValueLabel);
 
@@ -457,7 +477,7 @@ protected:
         // cycling two presets.
         auto* colorLabel = CCLabelBMFont::create("Marker Color (X/O only)", "bigFont.fnt");
         colorLabel->setAnchorPoint({0.f, 0.5f});
-        colorLabel->setPosition({labelX, 56.f});
+        colorLabel->setPosition({labelX, 48.f});
         colorLabel->setScale(labelScale);
         root->addChild(colorLabel);
 
@@ -467,7 +487,7 @@ protected:
         auto* swatchBtn = CCMenuItemSpriteExtra::create(
             swatchBg, this, menu_selector(DeathStampSettingsPopup::onOpenColorPicker)
         );
-        swatchBtn->setPosition({70.f, 56.f});
+        swatchBtn->setPosition({70.f, 48.f});
         m_menu->addChild(swatchBtn);
 
         // Row 4/5: opacity — the label sits on its own row, and the slider
@@ -479,22 +499,22 @@ protected:
         // in the wrong spot no matter what position it was given.
         auto* opacityLabel = CCLabelBMFont::create("Opacity", "bigFont.fnt");
         opacityLabel->setAnchorPoint({0.f, 0.5f});
-        opacityLabel->setPosition({labelX, 24.f});
+        opacityLabel->setPosition({labelX, 20.f});
         opacityLabel->setScale(labelScale);
         root->addChild(opacityLabel);
 
         m_opacitySlider = geode::SliderNode::create(
             [this](geode::SliderNode*, float value) { onOpacitySlider(value); }
         );
-        m_opacitySlider->setPosition({-35.f, -8.f});
+        m_opacitySlider->setPosition({-35.f, -10.f});
         m_opacitySlider->setMin(20.f);
         m_opacitySlider->setMax(255.f);
         m_opacitySlider->setSnapStep(1.f);
         root->addChild(m_opacitySlider);
 
         m_opacityLabel = CCLabelBMFont::create("", "goldFont.fnt");
-        m_opacityLabel->setPosition({108.f, -8.f});
-        m_opacityLabel->setScale(0.35f);
+        m_opacityLabel->setPosition({108.f, -10.f});
+        m_opacityLabel->setScale(0.5f);
         root->addChild(m_opacityLabel);
 
         // Row 6/7: marker size — same label-then-slider-with-value layout as
@@ -503,35 +523,35 @@ protected:
         // player's own vehicle size.
         m_sizeLabel = CCLabelBMFont::create("Marker Size", "bigFont.fnt");
         m_sizeLabel->setAnchorPoint({0.f, 0.5f});
-        m_sizeLabel->setPosition({labelX, -40.f});
+        m_sizeLabel->setPosition({labelX, -38.f});
         m_sizeLabel->setScale(labelScale);
         root->addChild(m_sizeLabel);
 
         m_sizeSlider = geode::SliderNode::create(
             [this](geode::SliderNode*, float value) { onSizeSlider(value); }
         );
-        m_sizeSlider->setPosition({-35.f, -72.f});
+        m_sizeSlider->setPosition({-35.f, -68.f});
         m_sizeSlider->setMin(75.f);
         m_sizeSlider->setMax(125.f);
         m_sizeSlider->setSnapStep(1.f);
         root->addChild(m_sizeSlider);
 
         m_sizeValueLabel = CCLabelBMFont::create("", "goldFont.fnt");
-        m_sizeValueLabel->setPosition({108.f, -72.f});
-        m_sizeValueLabel->setScale(0.35f);
+        m_sizeValueLabel->setPosition({108.f, -68.f});
+        m_sizeValueLabel->setScale(0.5f);
         root->addChild(m_sizeValueLabel);
 
         // Row 8: max markers
         auto* maxLabel = CCLabelBMFont::create("Max Markers (0 = all)", "bigFont.fnt");
         maxLabel->setAnchorPoint({0.f, 0.5f});
-        maxLabel->setPosition({labelX, -104.f});
+        maxLabel->setPosition({labelX, -96.f});
         maxLabel->setScale(labelScale);
         root->addChild(maxLabel);
 
         m_maxInput = geode::TextInput::create(60.f, "0");
         m_maxInput->setCommonFilter(geode::CommonFilter::Uint);
         m_maxInput->setMaxCharCount(3);
-        m_maxInput->setPosition({105.f, -104.f});
+        m_maxInput->setPosition({105.f, -96.f});
         m_maxInput->setScale(0.85f);
         m_maxInput->setString(std::to_string(Mod::get()->getSettingValue<int64_t>("max-markers")));
         m_maxInput->setCallback([](std::string const& text) {
@@ -549,7 +569,7 @@ protected:
         auto* clearBtn = CCMenuItemSpriteExtra::create(
             clearSprite, this, menu_selector(DeathStampSettingsPopup::onClearMarkers)
         );
-        clearBtn->setPosition({0.f, -138.f});
+        clearBtn->setPosition({0.f, -128.f});
         m_menu->addChild(clearBtn);
 
         refresh_();
@@ -587,7 +607,8 @@ protected:
 
         m_sizeSlider->setValue(static_cast<float>(size));
         m_sizeSlider->setEnabled(sizeApplies);
-        m_sizeValueLabel->setString(sizeApplies ? fmt::format("{}%", size).c_str() : "n/a");
+        m_sizeValueLabel->setString(sizeApplies ? fmt::format("{}%", size).c_str() : "N/A (icon)");
+        m_sizeValueLabel->setScale(sizeApplies ? 0.5f : 0.38f);
         ccColor3B sizeTint = sizeApplies ? ccc3(255, 255, 255) : ccc3(140, 140, 140);
         m_sizeLabel->setColor(sizeTint);
         m_sizeValueLabel->setColor(sizeTint);
@@ -644,7 +665,7 @@ protected:
 public:
     static DeathStampSettingsPopup* create() {
         auto ret = new DeathStampSettingsPopup();
-        if (ret && ret->init(340.f, 330.f)) {
+        if (ret && ret->init(340.f, 300.f)) {
             ret->autorelease();
             return ret;
         }
