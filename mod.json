@@ -5,32 +5,18 @@
         "android": "2.2081"
     },
     "version": "v1.0.0",
-    "id": "com.yourname.deathstamp",
+    "id": "com.dohye0508.deathstamp",
     "name": "Death Stamp",
-    "developer": "yourname",
-    "description": "Noclip while testing your own levels, and auto-stamp a marker at every point you would have died (rising-edge detection). For level design / verify-skip testing only.",
-    "repository": "",
+    "developer": "Robinted",
+    "description": "Stamps a frozen marker of your character at the exact point you died. For level design testing.",
+    "repository": "https://github.com/dohye0508/DeathStamp",
     "tags": ["editor", "utility"],
     "settings": {
         "enabled": {
             "name": "Death Stamp 활성화",
-            "description": "노클립 + 죽는 순간 스탬프 찍기를 켭니다.",
+            "description": "죽는 지점에 스탬프를 찍습니다.",
             "type": "bool",
             "default": false
-        },
-        "noclip": {
-            "name": "노클립",
-            "description": "죽음 판정이 나도 리셋되지 않고 계속 진행합니다.",
-            "type": "bool",
-            "default": true
-        },
-        "stamp-cooldown": {
-            "name": "스탬프 쿨다운 (초)",
-            "description": "같은 장애물에 연속으로 겹칠 때 스탬프가 도배되지 않도록 하는 최소 간격.",
-            "type": "float",
-            "default": 0.25,
-            "min": 0.05,
-            "max": 2.0
         },
         "marker-opacity": {
             "name": "마커 투명도",
