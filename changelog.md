@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.4.2
+
+- X/O markers are drawn shapes again, not text — the "text glyph" fix from the last update looked like a stray font character instead of an actual X/O, so they're back to real filled shapes, just drawn in a way that actually respects opacity this time
+- The opacity slider kept rendering in the wrong spot (up near the color row) no matter where it was positioned — it turned out to be GD's native slider widget, which isn't built to be repositioned freely. Swapped it for Geode's own slider widget, which behaves normally
+- Both the settings popup and the color picker are shorter now instead of stretching taller than they need to
+- Color picker is laid out sideways (wheel + live preview swatch next to each other) instead of stacked in one tall column
+
 ## v1.4.1
 
 - Fixed the settings popup being taller than the screen, cutting off the title and top row
