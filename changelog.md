@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.3.0
+
+- The pause-menu button now opens a settings popup instead of toggling on/off directly
+- Marker shape can now be your character icon, an X, or an O
+- X/O markers can be red or green
+- Marker opacity is now adjustable from the popup, not just the settings page
+- Added a "keep only the last N markers" option, so old ones fall off instead of piling up forever
+
 ## v1.2.0
 
 - Fixed the mod ID (it wasn't in a format the index would accept)

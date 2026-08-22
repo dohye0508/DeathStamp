@@ -8,7 +8,7 @@ While playing your own level, Death Stamp intercepts every death and drops a fro
 
 Play a few attempts with markers accumulating (instead of clearing each attempt) and you get a rough death heatmap of your own level — no guesswork about which section is actually the hard one.
 
-A toggle button is also added to the pause menu (Esc), so you can flip it on/off mid-playtest without leaving the level.
+A button in the pause menu (Esc) opens a settings popup, so you can adjust everything mid-playtest without leaving the level.
 
 ## Installation
 
@@ -19,8 +19,8 @@ A toggle button is also added to the pause menu (Esc), so you can flip it on/off
 ## Usage
 
 1. Open your level in the editor and start a Normal Mode playtest
-2. Enable the mod from its settings popup, or toggle it live from the pause menu (**Esc → Death Stamp: ON/OFF**)
-3. Play through — every death drops a marker at that spot
+2. Press **Esc** and tap the **Death Stamp** button to open the settings popup, or use the mod's settings page from the mod list
+3. Turn it on, pick a marker style, and play — every death drops a marker at that spot
 4. Repeat a few attempts to build up a heatmap of the roughest sections
 
 ## Settings
@@ -28,8 +28,13 @@ A toggle button is also added to the pause menu (Esc), so you can flip it on/off
 | Setting | Type | Default | Description |
 |---|---|---|---|
 | `enabled` | bool | `false` | Master switch for stamping |
+| `marker-style` | string | `player` | `player` (your character icon), `x`, or `o` |
+| `marker-color` | string | `red` | `red` or `green` — only affects `x`/`o` markers |
 | `marker-opacity` | int | `160` | Opacity of the death markers (0–255) |
 | `clear-on-new-attempt` | bool | `false` | Clear markers on every retry instead of accumulating a heatmap |
+| `max-markers` | int | `0` | Only keep the most recent N markers; `0` keeps all of them |
+
+All of these can be adjusted from the pause-menu settings popup — `marker-style` and `marker-color` are string values under the hood, but the popup exposes them as buttons rather than a raw text field.
 
 ## Building from source
 
