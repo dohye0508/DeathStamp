@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.9
+
+- Fixed markers rendering way too bright/washed out in every vehicle mode, not just robot — the offscreen texture used to flatten the icon marker was being displayed with the wrong blend mode, which brightened every translucent pixel more than it should
+- O marker made smaller (about 75% of its previous size)
+
 ## v1.4.8
 
 - Structural fix attempt for the icon marker's thick/doubled outline in robot mode: robot and spider are built from several overlapping body-part sprites rather than one flat frame like the other vehicles, so applying opacity straight to that live, multi-part figure was blending translucency on top of itself everywhere two parts overlapped. The marker is now rendered to a single flat image first, then opacity is applied to that one flat result instead — nothing left to double-blend.

@@ -204,6 +204,17 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
         flat->retain();
         flat->removeFromParentAndCleanup(false);
         flat->autorelease();
+
+        // CCRenderTexture's own sprite defaults to a premultiplied-alpha
+        // blend function (GL_ONE, GL_ONE_MINUS_SRC_ALPHA), but what actually
+        // ends up in the texture is ordinary straight-alpha color from
+        // normal sprite compositing. Displaying straight-alpha data with a
+        // premultiplied blend function makes every translucent pixel render
+        // way brighter than it should — which is exactly what made every
+        // vehicle mode, not just robot, look blown out once opacity was
+        // applied. This puts it back to the blend function normal sprites
+        // (and our texture's actual pixel data) expect.
+        flat->setBlendFunc({GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA});
         return flat;
     }
 
@@ -225,11 +236,7 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
             auto* circle = CCSprite::createWithSpriteFrameName("menuCircleWhite.png");
             circle->setColor(color);
             circle->setOpacity(static_cast<GLubyte>(opacity));
-            // The sprite itself is small — at 0.55 it read as visibly
-            // smaller than the X or the player-icon marker, which made it
-            // look like it wasn't actually touching whatever killed the
-            // player even at 100% marker size.
-            circle->setScale(0.85f);
+            circle->setScale(0.64f);
             marker = circle;
         }
         marker->setID("death-stamp-marker"_spr);
