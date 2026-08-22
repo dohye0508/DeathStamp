@@ -6,6 +6,7 @@
 #include <Geode/ui/Popup.hpp>
 #include <Geode/ui/TextInput.hpp>
 #include <Geode/ui/SliderNode.hpp>
+#include <Geode/cocos/misc_nodes/CCRenderTexture.h>
 #include <Geode/cocos/extensions/GUI/CCControlExtension/CCControlColourPicker.h>
 #include <Geode/cocos/extensions/GUI/CCControlExtension/CCScale9Sprite.h>
 #include <algorithm>
@@ -133,39 +134,77 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
         ghost->setVisible(true);
         ghost->setColor(gm->colorForIdx(gm->getPlayerColor()));
         ghost->setSecondColor(gm->colorForIdx(gm->getPlayerColor2()));
-        ghost->setCascadeOpacityEnabled(true);
-        ghost->setID("death-stamp-marker"_spr);
         if (ghost->m_waveTrail) {
             ghost->m_waveTrail->setVisible(false);
         }
 
-        // Applied before rotation: toggleFlyMode/toggleRollMode/etc. reset
-        // the player's rotation as part of switching vehicles, which was
-        // wiping out setRotation() when that call came first.
+        // Vehicle mode applied before adding to the scene, and rotation
+        // deliberately left at 0 here — we capture the ghost upright and
+        // bake the real death rotation onto the flattened result afterward
+        // instead (see below).
         applyPlayerMode(ghost, player, gm);
-        ghost->setRotation(player->getRotation());
 
-        // Set after applyPlayerMode, not before — robot mode rebuilds its
-        // own sub-sprites when toggled/framed, and those were coming in at
-        // full opacity regardless of what was set on the ghost earlier.
-        ghost->setOpacity(static_cast<GLubyte>(opacity));
-
-        // Stopped only now, after every property above is already set the
-        // way we want — robot/spider's idle animation keeps subtly scaling
-        // the body (their signature "wobble"), and left running on a
-        // translucent marker that reads as a thick/doubled outline. Safe to
-        // cut here (unlike right after create()) since we're not relying on
-        // any further action to fade the marker in — we already forced its
-        // final look ourselves.
+        // Added to the real scene (briefly) so onEnter()/normal setup runs
+        // exactly like it always has, then immediately flattened and
+        // removed again — robot/spider are built from several overlapping
+        // body-part sprites, not one flat frame like the other vehicles, and
+        // applying opacity straight to a live ghost like that blends every
+        // spot two parts overlap on top of itself, showing up as a much
+        // thicker/darker outline than intended (only in those two modes).
+        // Rendering the whole ghost to one flat texture at full opacity
+        // first, then applying opacity to that single flat result, leaves
+        // nothing left to double-blend.
+        player->getParent()->addChild(ghost, 9999);
         ghost->stopAllActions();
         ghost->unscheduleAllSelectors();
 
-        // Add to the exact same parent the live player is in, so its
-        // position needs no coordinate-space conversion at all. Nudged
-        // slightly forward — see deathNudgeOffset_.
-        player->getParent()->addChild(ghost, 9999);
-        ghost->setPosition(player->getPosition() + deathNudgeOffset_(player));
-        return ghost;
+        auto* flattened = flattenToSprite_(ghost);
+        ghost->removeFromParent();
+        if (!flattened) {
+            log::warn("Death Stamp: failed to flatten marker to a texture");
+            return nullptr;
+        }
+
+        flattened->setID("death-stamp-marker"_spr);
+        flattened->setOpacity(static_cast<GLubyte>(opacity));
+        flattened->setRotation(player->getRotation());
+
+        // Nudged slightly forward — see deathNudgeOffset_.
+        player->getParent()->addChild(flattened, 9999);
+        flattened->setPosition(player->getPosition() + deathNudgeOffset_(player));
+        return flattened;
+    }
+
+    // Renders `node` into an offscreen texture and hands back a standalone
+    // sprite of the result, instead of adding `node` (which may be built
+    // from several overlapping sub-sprites) to the scene directly.
+    static CCSprite* flattenToSprite_(CCNode* node) {
+        constexpr float canvas = 140.f;
+
+        auto* rt = CCRenderTexture::create(static_cast<int>(canvas), static_cast<int>(canvas));
+        if (!rt) return nullptr;
+
+        CCPoint originalPos = node->getPosition();
+        float originalRot = node->getRotation();
+        node->setPosition(CCPoint(canvas / 2.f, canvas / 2.f));
+        node->setRotation(0.f);
+
+        rt->beginWithClear(0.f, 0.f, 0.f, 0.f);
+        node->visit();
+        rt->end();
+
+        node->setPosition(originalPos);
+        node->setRotation(originalRot);
+
+        auto* flat = rt->getSprite();
+        if (!flat) return nullptr;
+        // Detach the render texture's own display sprite so it survives
+        // independently of `rt` (which is autoreleased and about to go
+        // away) — the standard cocos2d-x pattern for reusing it standalone.
+        flat->retain();
+        flat->removeFromParentAndCleanup(false);
+        flat->autorelease();
+        return flat;
     }
 
     // "O" uses the small circle sprite from GD's own color-wheel UI (already
@@ -210,6 +249,10 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
         auto* sprite = CCSprite::createWithTexture(xShapeTexture_());
         sprite->setColor(color);
         sprite->setOpacity(static_cast<GLubyte>(opacity));
+        // The rasterized shape reads much smaller in-game than its 40x40
+        // texture size would suggest — bumped up to actually match the O
+        // marker's footprint.
+        sprite->setScale(2.5f);
         return sprite;
     }
 

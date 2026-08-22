@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.8
+
+- Structural fix attempt for the icon marker's thick/doubled outline in robot mode: robot and spider are built from several overlapping body-part sprites rather than one flat frame like the other vehicles, so applying opacity straight to that live, multi-part figure was blending translucency on top of itself everywhere two parts overlapped. The marker is now rendered to a single flat image first, then opacity is applied to that one flat result instead — nothing left to double-blend.
+- X marker size increased about 2.5x — it was reading much smaller in-game than intended
+
 ## v1.4.7
 
 - Settings popup shortened again — rows compressed a bit further
