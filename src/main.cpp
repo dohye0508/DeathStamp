@@ -7,6 +7,8 @@
 #include <Geode/ui/Popup.hpp>
 #include <Geode/ui/TextInput.hpp>
 #include <Geode/cocos/draw_nodes/CCDrawNode.h>
+#include <Geode/cocos/extensions/GUI/CCControlExtension/CCControlColourPicker.h>
+#include <Geode/cocos/extensions/GUI/CCControlExtension/CCScale9Sprite.h>
 #include <algorithm>
 #include <cmath>
 
@@ -14,9 +16,20 @@ constexpr float kDeathStampPi = 3.14159265358979323846f;
 
 using namespace geode::prelude;
 
-static ccColor3B colorForMarkerColorSetting(std::string const& name) {
-    if (name == "green") return ccc3(60, 220, 100);
-    return ccc3(235, 60, 60);
+static ccColor3B readMarkerColor() {
+    auto* mod = Mod::get();
+    return ccc3(
+        static_cast<GLubyte>(mod->getSettingValue<int64_t>("marker-color-r")),
+        static_cast<GLubyte>(mod->getSettingValue<int64_t>("marker-color-g")),
+        static_cast<GLubyte>(mod->getSettingValue<int64_t>("marker-color-b"))
+    );
+}
+
+static void writeMarkerColor(ccColor3B color) {
+    auto* mod = Mod::get();
+    mod->setSettingValue<int64_t>("marker-color-r", color.r);
+    mod->setSettingValue<int64_t>("marker-color-g", color.g);
+    mod->setSettingValue<int64_t>("marker-color-b", color.b);
 }
 
 // GD's built-in bitmap fonts (bigFont.fnt/goldFont.fnt) only have Latin
@@ -28,10 +41,6 @@ static ccColor3B colorForMarkerColorSetting(std::string const& name) {
 static constexpr const char* kMarkerStyleValues[] = {"player", "x", "o"};
 static constexpr const char* kMarkerStyleLabels[] = {"Icon", "X", "O"};
 static constexpr int kMarkerStyleCount = 3;
-
-static constexpr const char* kMarkerColorValues[] = {"red", "green"};
-static constexpr const char* kMarkerColorLabels[] = {"Red", "Green"};
-static constexpr int kMarkerColorCount = 2;
 
 class $modify(DeathStampPlayLayer, PlayLayer) {
     struct Fields {
@@ -73,9 +82,6 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
 
     void resetLevel() {
         m_fields->hasStampedThisAttempt = false;
-        if (Mod::get()->getSettingValue<bool>("clear-on-new-attempt")) {
-            clearMarkers();
-        }
         PlayLayer::resetLevel();
     }
 
@@ -148,8 +154,7 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
 
     CCNode* createShapeMarker(PlayerObject* player, std::string const& style) {
         int opacity = Mod::get()->getSettingValue<int64_t>("marker-opacity");
-        auto colorName = Mod::get()->getSettingValue<std::string>("marker-color");
-        ccColor3B color = colorForMarkerColorSetting(colorName);
+        ccColor3B color = readMarkerColor();
         float alpha = static_cast<float>(opacity) / 255.f;
         ccColor4F c = ccc4f(color.r / 255.f, color.g / 255.f, color.b / 255.f, alpha);
 
@@ -232,6 +237,9 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
         ghost->m_isGoingLeft = live->m_isGoingLeft;
     }
 
+public:
+    // Called from the settings popup's Clear button via PlayLayer::get(), so
+    // this needs to actually be reachable from outside the class.
     void clearMarkers() {
         for (auto marker : m_fields->markers) {
             if (marker) marker->removeFromParent();
@@ -240,23 +248,61 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
     }
 };
 
+// Opens GD's own real color wheel (the same CCControlColourPicker used
+// under the hood by things like the object color picker), rather than a
+// fixed set of presets.
+class MarkerColorPickerPopup : public geode::Popup, public cocos2d::extension::ColorPickerDelegate {
+protected:
+    cocos2d::extension::CCControlColourPicker* m_picker = nullptr;
+
+    bool init(float width, float height) {
+        if (!Popup::init(width, height)) return false;
+
+        setID("death-stamp-color-picker-popup"_spr);
+        setTitle("Marker Color");
+
+        m_picker = cocos2d::extension::CCControlColourPicker::create();
+        m_picker->setColorValue(readMarkerColor());
+        m_picker->setDelegate(this);
+        m_picker->setPosition(m_mainLayer->getContentSize() * 0.5f);
+        m_mainLayer->addChild(m_picker);
+
+        return true;
+    }
+
+    void colorValueChanged(ccColor3B color) override {
+        writeMarkerColor(color);
+    }
+
+public:
+    static MarkerColorPickerPopup* create() {
+        auto ret = new MarkerColorPickerPopup();
+        if (ret && ret->init(300.f, 300.f)) {
+            ret->autorelease();
+            return ret;
+        }
+        CC_SAFE_DELETE(ret);
+        return nullptr;
+    }
+};
+
 // Settings popup opened from the pause-menu button. Everything here reads
 // straight from the persisted mod settings and writes straight back to them
 // on every click/change — no separate widget-side state to keep in sync,
 // since chasing that (CCMenuItemToggler's internal toggled state specifically)
 // is what caused the pause-button bugs earlier in this mod's history.
+// update() keeps refreshing continuously so the color swatch stays in sync
+// while the color-picker sub-popup is open on top of this one.
 class DeathStampSettingsPopup : public geode::Popup {
 protected:
     CCMenuItemSpriteExtra* m_enabledCheckbox = nullptr;
-    CCMenuItemSpriteExtra* m_clearCheckbox = nullptr;
     CCLabelBMFont* m_styleValueLabel = nullptr;
-    CCLabelBMFont* m_colorValueLabel = nullptr;
+    CCScale9Sprite* m_colorSwatch = nullptr;
     Slider* m_opacitySlider = nullptr;
     CCLabelBMFont* m_opacityLabel = nullptr;
     geode::TextInput* m_maxInput = nullptr;
     CCMenu* m_menu = nullptr;
     int m_styleIndex = 0;
-    int m_colorIndex = 0;
 
     bool init(float width, float height) {
         if (!Popup::init(width, height)) return false;
@@ -265,12 +311,8 @@ protected:
         setTitle("Death Stamp Settings");
 
         auto style = Mod::get()->getSettingValue<std::string>("marker-style");
-        auto colorName = Mod::get()->getSettingValue<std::string>("marker-color");
         for (int i = 0; i < kMarkerStyleCount; i++) {
             if (style == kMarkerStyleValues[i]) m_styleIndex = i;
-        }
-        for (int i = 0; i < kMarkerColorCount; i++) {
-            if (colorName == kMarkerColorValues[i]) m_colorIndex = i;
         }
 
         auto* root = CCNode::create();
@@ -288,89 +330,79 @@ protected:
         m_enabledCheckbox = CCMenuItemSpriteExtra::create(
             CCSprite::create(), this, menu_selector(DeathStampSettingsPopup::onToggleEnabled)
         );
-        m_enabledCheckbox->setPosition({labelX + 8.f, 100.f});
+        m_enabledCheckbox->setPosition({labelX + 8.f, 155.f});
         m_menu->addChild(m_enabledCheckbox);
 
         auto* enabledLabel = CCLabelBMFont::create("Enabled", "bigFont.fnt");
         enabledLabel->setAnchorPoint({0.f, 0.5f});
-        enabledLabel->setPosition({labelX + 24.f, 100.f});
+        enabledLabel->setPosition({labelX + 24.f, 155.f});
         enabledLabel->setScale(labelScale);
         root->addChild(enabledLabel);
 
-        // Row 2: clear on new attempt
-        m_clearCheckbox = CCMenuItemSpriteExtra::create(
-            CCSprite::create(), this, menu_selector(DeathStampSettingsPopup::onToggleClear)
-        );
-        m_clearCheckbox->setPosition({labelX + 8.f, 68.f});
-        m_menu->addChild(m_clearCheckbox);
-
-        auto* clearLabel = CCLabelBMFont::create("Clear Each Retry", "bigFont.fnt");
-        clearLabel->setAnchorPoint({0.f, 0.5f});
-        clearLabel->setPosition({labelX + 24.f, 68.f});
-        clearLabel->setScale(labelScale);
-        root->addChild(clearLabel);
-
-        // Row 3: marker style — left/right cycle instead of one button per
+        // Row 2: marker style — left/right cycle instead of one button per
         // option, so adding more shapes later doesn't need a wider popup.
         auto* styleLabel = CCLabelBMFont::create("Marker Shape", "bigFont.fnt");
         styleLabel->setAnchorPoint({0.f, 0.5f});
-        styleLabel->setPosition({labelX, 30.f});
+        styleLabel->setPosition({labelX, 115.f});
         styleLabel->setScale(labelScale);
         root->addChild(styleLabel);
 
-        m_menu->addChild(makeArrow_(false, 30.f, menu_selector(DeathStampSettingsPopup::onStylePrev)));
-        m_menu->addChild(makeArrow_(true, 30.f, menu_selector(DeathStampSettingsPopup::onStyleNext)));
+        m_menu->addChild(makeArrow_(false, 115.f, menu_selector(DeathStampSettingsPopup::onStylePrev)));
+        m_menu->addChild(makeArrow_(true, 115.f, menu_selector(DeathStampSettingsPopup::onStyleNext)));
 
         m_styleValueLabel = CCLabelBMFont::create("", "goldFont.fnt");
-        m_styleValueLabel->setPosition({70.f, 30.f});
+        m_styleValueLabel->setPosition({70.f, 115.f});
         m_styleValueLabel->setScale(0.5f);
         root->addChild(m_styleValueLabel);
 
-        // Row 4: marker color
+        // Row 3: marker color — opens GD's real color wheel instead of
+        // cycling two presets.
         auto* colorLabel = CCLabelBMFont::create("Marker Color (X/O only)", "bigFont.fnt");
         colorLabel->setAnchorPoint({0.f, 0.5f});
-        colorLabel->setPosition({labelX, -4.f});
+        colorLabel->setPosition({labelX, 75.f});
         colorLabel->setScale(labelScale);
         root->addChild(colorLabel);
 
-        m_menu->addChild(makeArrow_(false, -4.f, menu_selector(DeathStampSettingsPopup::onColorPrev)));
-        m_menu->addChild(makeArrow_(true, -4.f, menu_selector(DeathStampSettingsPopup::onColorNext)));
+        auto* swatchBg = CCScale9Sprite::create("square02b_001.png");
+        swatchBg->setContentSize({34.f, 34.f});
+        m_colorSwatch = swatchBg;
+        auto* swatchBtn = CCMenuItemSpriteExtra::create(
+            swatchBg, this, menu_selector(DeathStampSettingsPopup::onOpenColorPicker)
+        );
+        swatchBtn->setPosition({70.f, 75.f});
+        m_menu->addChild(swatchBtn);
 
-        m_colorValueLabel = CCLabelBMFont::create("", "goldFont.fnt");
-        m_colorValueLabel->setPosition({70.f, -4.f});
-        m_colorValueLabel->setScale(0.5f);
-        root->addChild(m_colorValueLabel);
-
-        // Row 5: opacity
+        // Row 4: opacity — the slider needs real clearance below its label,
+        // or it visually bleeds into whatever row is above it.
         auto* opacityLabel = CCLabelBMFont::create("Opacity", "bigFont.fnt");
         opacityLabel->setAnchorPoint({0.f, 0.5f});
-        opacityLabel->setPosition({labelX, -40.f});
+        opacityLabel->setPosition({labelX, 30.f});
         opacityLabel->setScale(labelScale);
         root->addChild(opacityLabel);
 
         m_opacitySlider = Slider::create(
             this, menu_selector(DeathStampSettingsPopup::onOpacitySlider), 0.6f
         );
-        m_opacitySlider->setPosition({-25.f, -64.f});
+        m_opacitySlider->setPosition({-25.f, -10.f});
         m_opacitySlider->setScale(0.6f);
         m_menu->addChild(m_opacitySlider);
 
         m_opacityLabel = CCLabelBMFont::create("", "goldFont.fnt");
-        m_opacityLabel->setPosition({108.f, -40.f});
+        m_opacityLabel->setPosition({108.f, 30.f});
         m_opacityLabel->setScale(0.35f);
         root->addChild(m_opacityLabel);
 
-        // Row 6: max markers
+        // Row 5: max markers
         auto* maxLabel = CCLabelBMFont::create("Max Markers (0 = all)", "bigFont.fnt");
         maxLabel->setAnchorPoint({0.f, 0.5f});
-        maxLabel->setPosition({labelX, -96.f});
+        maxLabel->setPosition({labelX, -70.f});
         maxLabel->setScale(labelScale);
         root->addChild(maxLabel);
 
         m_maxInput = geode::TextInput::create(60.f, "0");
         m_maxInput->setCommonFilter(geode::CommonFilter::Uint);
         m_maxInput->setMaxCharCount(3);
-        m_maxInput->setPosition({105.f, -96.f});
+        m_maxInput->setPosition({105.f, -70.f});
         m_maxInput->setScale(0.85f);
         m_maxInput->setString(std::to_string(Mod::get()->getSettingValue<int64_t>("max-markers")));
         m_maxInput->setCallback([](std::string const& text) {
@@ -381,8 +413,26 @@ protected:
         });
         root->addChild(m_maxInput);
 
+        // Row 6: clear all markers right now, on demand, instead of an
+        // automatic "clear every retry" setting.
+        auto* clearSprite = ButtonSprite::create("Clear All Markers", "bigFont.fnt", "GJ_button_06.png", 0.8f);
+        clearSprite->setScale(0.7f);
+        auto* clearBtn = CCMenuItemSpriteExtra::create(
+            clearSprite, this, menu_selector(DeathStampSettingsPopup::onClearMarkers)
+        );
+        clearBtn->setPosition({0.f, -140.f});
+        m_menu->addChild(clearBtn);
+
         refresh_();
+        // update() only fires if the node is actually scheduled for it —
+        // needed here so the color swatch keeps syncing while the color
+        // picker sub-popup is open on top of this one.
+        scheduleUpdate();
         return true;
+    }
+
+    void update(float) override {
+        refresh_();
     }
 
     CCMenuItemSpriteExtra* makeArrow_(bool isRight, float y, SEL_MenuHandler sel) {
@@ -395,14 +445,11 @@ protected:
 
     void refresh_() {
         bool enabled = Mod::get()->getSettingValue<bool>("enabled");
-        bool clear = Mod::get()->getSettingValue<bool>("clear-on-new-attempt");
         int opacity = Mod::get()->getSettingValue<int64_t>("marker-opacity");
 
         m_enabledCheckbox->setSprite(checkSprite_(enabled));
-        m_clearCheckbox->setSprite(checkSprite_(clear));
-
         m_styleValueLabel->setString(kMarkerStyleLabels[m_styleIndex]);
-        m_colorValueLabel->setString(kMarkerColorLabels[m_colorIndex]);
+        m_colorSwatch->setColor(readMarkerColor());
 
         m_opacitySlider->setValue(
             std::clamp(static_cast<float>(opacity - 20) / (255.f - 20.f), 0.f, 1.f)
@@ -422,12 +469,6 @@ protected:
         refresh_();
     }
 
-    void onToggleClear(CCObject*) {
-        bool newValue = !Mod::get()->getSettingValue<bool>("clear-on-new-attempt");
-        Mod::get()->setSettingValue<bool>("clear-on-new-attempt", newValue);
-        refresh_();
-    }
-
     void onStylePrev(CCObject*) {
         m_styleIndex = (m_styleIndex - 1 + kMarkerStyleCount) % kMarkerStyleCount;
         Mod::get()->setSettingValue<std::string>("marker-style", kMarkerStyleValues[m_styleIndex]);
@@ -440,16 +481,10 @@ protected:
         refresh_();
     }
 
-    void onColorPrev(CCObject*) {
-        m_colorIndex = (m_colorIndex - 1 + kMarkerColorCount) % kMarkerColorCount;
-        Mod::get()->setSettingValue<std::string>("marker-color", kMarkerColorValues[m_colorIndex]);
-        refresh_();
-    }
-
-    void onColorNext(CCObject*) {
-        m_colorIndex = (m_colorIndex + 1) % kMarkerColorCount;
-        Mod::get()->setSettingValue<std::string>("marker-color", kMarkerColorValues[m_colorIndex]);
-        refresh_();
+    void onOpenColorPicker(CCObject*) {
+        if (auto* popup = MarkerColorPickerPopup::create()) {
+            popup->show();
+        }
     }
 
     void onOpacitySlider(CCObject*) {
@@ -460,10 +495,16 @@ protected:
         m_opacityLabel->setString(fmt::format("{}/255", opacity).c_str());
     }
 
+    void onClearMarkers(CCObject*) {
+        if (auto* pl = PlayLayer::get()) {
+            static_cast<DeathStampPlayLayer*>(pl)->clearMarkers();
+        }
+    }
+
 public:
     static DeathStampSettingsPopup* create() {
         auto ret = new DeathStampSettingsPopup();
-        if (ret && ret->init(340.f, 320.f)) {
+        if (ret && ret->init(340.f, 420.f)) {
             ret->autorelease();
             return ret;
         }

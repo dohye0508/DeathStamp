@@ -29,12 +29,11 @@ A button in the pause menu (Esc) opens a settings popup, so you can adjust every
 |---|---|---|---|
 | `enabled` | bool | `false` | Master switch for stamping |
 | `marker-style` | string | `player` | `player` (your character icon), `x`, or `o` |
-| `marker-color` | string | `red` | `red` or `green` — only affects `x`/`o` markers |
+| `marker-color-r/g/b` | int | `235`/`60`/`60` | Color for `x`/`o` markers — pick it visually via the popup's color wheel rather than editing these directly |
 | `marker-opacity` | int | `160` | Opacity of the death markers (0–255) |
-| `clear-on-new-attempt` | bool | `false` | Clear markers on every retry instead of accumulating a heatmap |
 | `max-markers` | int | `0` | Only keep the most recent N markers; `0` keeps all of them |
 
-All of these can be adjusted from the pause-menu settings popup — `marker-style` and `marker-color` are string values under the hood, but the popup exposes them as buttons rather than a raw text field.
+All of these can be adjusted from the pause-menu settings popup, including a "Clear All Markers" button to wipe the current level's markers on demand.
 
 ## Building from source
 

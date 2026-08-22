@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.0
+
+- Marker color now opens GD's own color wheel instead of cycling between just red and green
+- Removed "clear markers every retry" — replaced with a "Clear All Markers" button you press whenever you actually want to wipe them
+- Fixed the opacity slider visually overlapping the row above it
+
 ## v1.3.1
 
 - Fixed the settings popup text rendering broken — GD's built-in fonts don't have Korean glyphs, so anything Korean in there was drawing as blank space. Popup text is English now.
