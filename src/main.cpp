@@ -170,7 +170,11 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
             auto* circle = CCSprite::createWithSpriteFrameName("menuCircleWhite.png");
             circle->setColor(color);
             circle->setOpacity(static_cast<GLubyte>(opacity));
-            circle->setScale(0.55f);
+            // The sprite itself is small — at 0.55 it read as visibly
+            // smaller than the X or the player-icon marker, which made it
+            // look like it wasn't actually touching whatever killed the
+            // player even at 100% marker size.
+            circle->setScale(0.85f);
             marker = circle;
         }
         marker->setID("death-stamp-marker"_spr);
@@ -232,8 +236,8 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
     // visually lands on/in the hazard — a rough estimate from
     // m_isGoingLeft/m_yVelocity, not exact physics.
     static CCPoint deathNudgeOffset_(PlayerObject* player) {
-        constexpr float horizontalNudge = 8.f;
-        constexpr float verticalNudge = 8.f;
+        constexpr float horizontalNudge = 10.5f;
+        constexpr float verticalNudge = 10.5f;
 
         float dx = player->m_isGoingLeft ? -horizontalNudge : horizontalNudge;
         float dy = 0.f;

@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.5
+
+- Increased the forward nudge on death markers by about 30% — they were still landing a bit short of the hazard
+- Made the O marker bigger — it looked disconnected from hazards even at 100% marker size since the underlying sprite itself was small
+
 ## v1.4.4
 
 - X/O markers no longer hand-drawn — the custom-drawn shapes kept looking rough/broken no matter how many segments they were built from, so they're rebuilt from real game sprites and plain rectangles instead
