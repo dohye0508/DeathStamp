@@ -6,13 +6,9 @@
 #include <Geode/binding/Slider.hpp>
 #include <Geode/ui/Popup.hpp>
 #include <Geode/ui/TextInput.hpp>
-#include <Geode/cocos/draw_nodes/CCDrawNode.h>
 #include <Geode/cocos/extensions/GUI/CCControlExtension/CCControlColourPicker.h>
 #include <Geode/cocos/extensions/GUI/CCControlExtension/CCScale9Sprite.h>
 #include <algorithm>
-#include <cmath>
-
-constexpr float kDeathStampPi = 3.14159265358979323846f;
 
 using namespace geode::prelude;
 
@@ -152,38 +148,25 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
         return ghost;
     }
 
+    // Rendered as a bitmap-font glyph rather than hand-drawn CCDrawNode
+    // segments — CCDrawNode's line/segment fill in this GD build wasn't
+    // respecting alpha correctly (markers looked opaque once placed, only
+    // seeming translucent while the live player sprite happened to overlap
+    // them). A CCLabelBMFont goes through the normal sprite render path,
+    // where setOpacity is guaranteed to work.
     CCNode* createShapeMarker(PlayerObject* player, std::string const& style) {
         int opacity = Mod::get()->getSettingValue<int64_t>("marker-opacity");
         ccColor3B color = readMarkerColor();
-        float alpha = static_cast<float>(opacity) / 255.f;
-        ccColor4F c = ccc4f(color.r / 255.f, color.g / 255.f, color.b / 255.f, alpha);
 
-        auto* draw = CCDrawNode::create();
-        draw->setID("death-stamp-marker"_spr);
+        auto* label = CCLabelBMFont::create(style == "x" ? "X" : "O", "bigFont.fnt");
+        label->setID("death-stamp-marker"_spr);
+        label->setColor(color);
+        label->setOpacity(static_cast<GLubyte>(opacity));
+        label->setScale(0.6f);
 
-        if (style == "x") {
-            constexpr float half = 9.f;
-            constexpr float thickness = 2.5f;
-            draw->drawSegment({-half, -half}, {half, half}, thickness, c);
-            draw->drawSegment({-half, half}, {half, -half}, thickness, c);
-        } else {
-            // "o" — approximate a ring out of short segments; CCDrawNode has
-            // no direct "draw circle outline" call.
-            constexpr int segments = 20;
-            constexpr float radius = 9.f;
-            constexpr float thickness = 2.2f;
-            for (int i = 0; i < segments; i++) {
-                float a0 = static_cast<float>(i) / segments * 2.f * kDeathStampPi;
-                float a1 = static_cast<float>(i + 1) / segments * 2.f * kDeathStampPi;
-                CCPoint p0 = {radius * cosf(a0), radius * sinf(a0)};
-                CCPoint p1 = {radius * cosf(a1), radius * sinf(a1)};
-                draw->drawSegment(p0, p1, thickness, c);
-            }
-        }
-
-        player->getParent()->addChild(draw, 9999);
-        draw->setPosition(player->getPosition());
-        return draw;
+        player->getParent()->addChild(label, 9999);
+        label->setPosition(player->getPosition());
+        return label;
     }
 
     // PlayerObject::create() always gives you a cube — the vehicle a player
@@ -254,6 +237,7 @@ public:
 class MarkerColorPickerPopup : public geode::Popup, public cocos2d::extension::ColorPickerDelegate {
 protected:
     cocos2d::extension::CCControlColourPicker* m_picker = nullptr;
+    CCScale9Sprite* m_preview = nullptr;
 
     bool init(float width, float height) {
         if (!Popup::init(width, height)) return false;
@@ -261,23 +245,43 @@ protected:
         setID("death-stamp-color-picker-popup"_spr);
         setTitle("Marker Color");
 
+        auto* root = CCNode::create();
+        root->setPosition(m_mainLayer->getContentSize() * 0.5f);
+        m_mainLayer->addChild(root);
+
         m_picker = cocos2d::extension::CCControlColourPicker::create();
         m_picker->setColorValue(readMarkerColor());
         m_picker->setDelegate(this);
-        m_picker->setPosition(m_mainLayer->getContentSize() * 0.5f);
-        m_mainLayer->addChild(m_picker);
+        m_picker->setPosition({0.f, 25.f});
+        root->addChild(m_picker);
+
+        // The wheel alone doesn't show what the result actually looks like
+        // until you back out of the popup — this gives an always-visible
+        // live swatch instead.
+        auto* previewLabel = CCLabelBMFont::create("Preview", "bigFont.fnt");
+        previewLabel->setPosition({0.f, -95.f});
+        previewLabel->setScale(0.45f);
+        root->addChild(previewLabel);
+
+        auto* previewBg = CCScale9Sprite::create("square02b_001.png");
+        previewBg->setContentSize({50.f, 50.f});
+        previewBg->setColor(readMarkerColor());
+        previewBg->setPosition({0.f, -130.f});
+        m_preview = previewBg;
+        root->addChild(m_preview);
 
         return true;
     }
 
     void colorValueChanged(ccColor3B color) override {
         writeMarkerColor(color);
+        if (m_preview) m_preview->setColor(color);
     }
 
 public:
     static MarkerColorPickerPopup* create() {
         auto ret = new MarkerColorPickerPopup();
-        if (ret && ret->init(300.f, 300.f)) {
+        if (ret && ret->init(300.f, 380.f)) {
             ret->autorelease();
             return ret;
         }
@@ -330,12 +334,12 @@ protected:
         m_enabledCheckbox = CCMenuItemSpriteExtra::create(
             CCSprite::create(), this, menu_selector(DeathStampSettingsPopup::onToggleEnabled)
         );
-        m_enabledCheckbox->setPosition({labelX + 8.f, 155.f});
+        m_enabledCheckbox->setPosition({labelX + 8.f, 130.f});
         m_menu->addChild(m_enabledCheckbox);
 
         auto* enabledLabel = CCLabelBMFont::create("Enabled", "bigFont.fnt");
         enabledLabel->setAnchorPoint({0.f, 0.5f});
-        enabledLabel->setPosition({labelX + 24.f, 155.f});
+        enabledLabel->setPosition({labelX + 24.f, 130.f});
         enabledLabel->setScale(labelScale);
         root->addChild(enabledLabel);
 
@@ -343,15 +347,15 @@ protected:
         // option, so adding more shapes later doesn't need a wider popup.
         auto* styleLabel = CCLabelBMFont::create("Marker Shape", "bigFont.fnt");
         styleLabel->setAnchorPoint({0.f, 0.5f});
-        styleLabel->setPosition({labelX, 115.f});
+        styleLabel->setPosition({labelX, 95.f});
         styleLabel->setScale(labelScale);
         root->addChild(styleLabel);
 
-        m_menu->addChild(makeArrow_(false, 115.f, menu_selector(DeathStampSettingsPopup::onStylePrev)));
-        m_menu->addChild(makeArrow_(true, 115.f, menu_selector(DeathStampSettingsPopup::onStyleNext)));
+        m_menu->addChild(makeArrow_(false, 95.f, menu_selector(DeathStampSettingsPopup::onStylePrev)));
+        m_menu->addChild(makeArrow_(true, 95.f, menu_selector(DeathStampSettingsPopup::onStyleNext)));
 
         m_styleValueLabel = CCLabelBMFont::create("", "goldFont.fnt");
-        m_styleValueLabel->setPosition({70.f, 115.f});
+        m_styleValueLabel->setPosition({70.f, 95.f});
         m_styleValueLabel->setScale(0.5f);
         root->addChild(m_styleValueLabel);
 
@@ -359,7 +363,7 @@ protected:
         // cycling two presets.
         auto* colorLabel = CCLabelBMFont::create("Marker Color (X/O only)", "bigFont.fnt");
         colorLabel->setAnchorPoint({0.f, 0.5f});
-        colorLabel->setPosition({labelX, 75.f});
+        colorLabel->setPosition({labelX, 60.f});
         colorLabel->setScale(labelScale);
         root->addChild(colorLabel);
 
@@ -369,40 +373,40 @@ protected:
         auto* swatchBtn = CCMenuItemSpriteExtra::create(
             swatchBg, this, menu_selector(DeathStampSettingsPopup::onOpenColorPicker)
         );
-        swatchBtn->setPosition({70.f, 75.f});
+        swatchBtn->setPosition({70.f, 60.f});
         m_menu->addChild(swatchBtn);
 
         // Row 4: opacity — the slider needs real clearance below its label,
         // or it visually bleeds into whatever row is above it.
         auto* opacityLabel = CCLabelBMFont::create("Opacity", "bigFont.fnt");
         opacityLabel->setAnchorPoint({0.f, 0.5f});
-        opacityLabel->setPosition({labelX, 30.f});
+        opacityLabel->setPosition({labelX, 20.f});
         opacityLabel->setScale(labelScale);
         root->addChild(opacityLabel);
 
         m_opacitySlider = Slider::create(
             this, menu_selector(DeathStampSettingsPopup::onOpacitySlider), 0.6f
         );
-        m_opacitySlider->setPosition({-25.f, -10.f});
+        m_opacitySlider->setPosition({-25.f, -15.f});
         m_opacitySlider->setScale(0.6f);
         m_menu->addChild(m_opacitySlider);
 
         m_opacityLabel = CCLabelBMFont::create("", "goldFont.fnt");
-        m_opacityLabel->setPosition({108.f, 30.f});
+        m_opacityLabel->setPosition({108.f, 20.f});
         m_opacityLabel->setScale(0.35f);
         root->addChild(m_opacityLabel);
 
         // Row 5: max markers
         auto* maxLabel = CCLabelBMFont::create("Max Markers (0 = all)", "bigFont.fnt");
         maxLabel->setAnchorPoint({0.f, 0.5f});
-        maxLabel->setPosition({labelX, -70.f});
+        maxLabel->setPosition({labelX, -55.f});
         maxLabel->setScale(labelScale);
         root->addChild(maxLabel);
 
         m_maxInput = geode::TextInput::create(60.f, "0");
         m_maxInput->setCommonFilter(geode::CommonFilter::Uint);
         m_maxInput->setMaxCharCount(3);
-        m_maxInput->setPosition({105.f, -70.f});
+        m_maxInput->setPosition({105.f, -55.f});
         m_maxInput->setScale(0.85f);
         m_maxInput->setString(std::to_string(Mod::get()->getSettingValue<int64_t>("max-markers")));
         m_maxInput->setCallback([](std::string const& text) {
@@ -420,7 +424,7 @@ protected:
         auto* clearBtn = CCMenuItemSpriteExtra::create(
             clearSprite, this, menu_selector(DeathStampSettingsPopup::onClearMarkers)
         );
-        clearBtn->setPosition({0.f, -140.f});
+        clearBtn->setPosition({0.f, -105.f});
         m_menu->addChild(clearBtn);
 
         refresh_();
@@ -504,7 +508,7 @@ protected:
 public:
     static DeathStampSettingsPopup* create() {
         auto ret = new DeathStampSettingsPopup();
-        if (ret && ret->init(340.f, 420.f)) {
+        if (ret && ret->init(340.f, 340.f)) {
             ret->autorelease();
             return ret;
         }

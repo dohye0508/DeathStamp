@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.4.1
+
+- Fixed the settings popup being taller than the screen, cutting off the title and top row
+- X/O markers no longer look fully opaque once placed regardless of the opacity setting — they're drawn as text glyphs now instead of hand-drawn shapes, which respects opacity properly
+- The color picker now shows a live preview swatch, instead of only finding out what you picked after closing it
+
 ## v1.4.0
 
 - Marker color now opens GD's own color wheel instead of cycling between just red and green
