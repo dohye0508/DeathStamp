@@ -80,6 +80,7 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
         ghost->setOpacity(static_cast<GLubyte>(opacity));
         ghost->setRotation(player->getRotation());
         ghost->setID("death-stamp-marker"_spr);
+        applyPlayerMode(ghost, player, gm);
         if (ghost->m_waveTrail) {
             ghost->m_waveTrail->setVisible(false);
         }
@@ -90,6 +91,48 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
         ghost->setPosition(player->getPosition());
 
         m_fields->markers.push_back(ghost);
+    }
+
+    // PlayerObject::create() always gives you a cube — the vehicle a player
+    // is in (ship/ball/UFO/wave/robot/spider/swing) is separate runtime state
+    // (m_isShip etc.) that has to be copied over explicitly and paired with
+    // the matching updatePlayer*Frame call, or it silently stays a cube.
+    // Pattern taken from AttemptPlaybackMod's setPOFrameForIcon/forceMode.
+    static void applyPlayerMode(PlayerObject* ghost, PlayerObject* live, GameManager* gm) {
+        ghost->toggleFlyMode(false, true);
+        ghost->toggleBirdMode(false, true);
+        ghost->toggleRollMode(false, true);
+        ghost->toggleDartMode(false, true);
+        ghost->toggleRobotMode(false, true);
+        ghost->toggleSpiderMode(false, true);
+        ghost->toggleSwingMode(false, true);
+
+        if (live->m_isShip) {
+            ghost->toggleFlyMode(true, true);
+            ghost->updatePlayerShipFrame(gm->getPlayerShip());
+            ghost->updatePlayerFrame(gm->getPlayerFrame());
+        } else if (live->m_isBird) {
+            ghost->toggleBirdMode(true, true);
+            ghost->updatePlayerBirdFrame(gm->getPlayerBird());
+            ghost->updatePlayerFrame(gm->getPlayerFrame());
+        } else if (live->m_isBall) {
+            ghost->toggleRollMode(true, true);
+            ghost->updatePlayerRollFrame(gm->getPlayerBall());
+        } else if (live->m_isDart) {
+            ghost->toggleDartMode(true, true);
+            ghost->updatePlayerDartFrame(gm->getPlayerDart());
+        } else if (live->m_isRobot) {
+            ghost->toggleRobotMode(true, true);
+            ghost->updatePlayerRobotFrame(gm->getPlayerRobot());
+        } else if (live->m_isSpider) {
+            ghost->toggleSpiderMode(true, true);
+            ghost->updatePlayerSpiderFrame(gm->getPlayerSpider());
+        } else if (live->m_isSwing) {
+            ghost->toggleSwingMode(true, true);
+            ghost->updatePlayerSwingFrame(gm->getPlayerSwing());
+        } else {
+            ghost->updatePlayerFrame(gm->getPlayerFrame());
+        }
     }
 
     void clearMarkers() {
