@@ -5,7 +5,7 @@
         "android": "2.2081"
     },
     "version": "v1.1.0",
-    "id": "com.dohye0508.deathstamp",
+    "id": "dohye0508.deathstamp",
     "name": "Death Stamp",
     "developer": "Robinted",
     "description": "Stamps a frozen marker of your character at the exact point you died. For level design testing.",
