@@ -1,10 +1,9 @@
 # Changelog
 
-## v1.1.1
+## v1.1.3
 
 - Fixed the mod ID so it could actually be submitted to the mod index
-- Rewrote the in-game settings text to be clearer for players, not just developers
-- The in-game description was pulling from README.md, which is meant for developers on GitHub — it showed a broken table and a "Building from source" section players don't need. Added a separate about.md with just what a player needs to know.
+- Minor wording cleanup to the in-game description and settings
 
 ## v1.1.0
 
