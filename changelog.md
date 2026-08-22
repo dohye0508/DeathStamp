@@ -1,9 +1,9 @@
 # Changelog
 
-## v1.1.4
+## v1.2.0
 
-- Fixed the mod ID so it could actually be submitted to the mod index
-- Minor wording cleanup to the in-game description and settings
+- Fixed the mod ID (it wasn't in a format the index would accept)
+- Small wording tweaks here and there
 
 ## v1.1.0
 
