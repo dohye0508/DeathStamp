@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.4.6
+
+- Moved Marker Size below Opacity in the settings popup
+- Opacity and Marker Size now each show their value number right next to their own gauge bar, instead of the number sitting on the label row while the bar hangs disconnected below it
+- Marker Size is now a gauge bar too, narrowed to a 75-125% range — a wider range made the death-position nudge (which isn't exact physics) look worse than it needed to
+- Marker Size has no effect on the icon marker style anymore, since that one already sizes itself off your live character
+- Fixed the icon marker's opacity not applying in robot mode
+
 ## v1.4.5
 
 - Increased the forward nudge on death markers by about 30% — they were still landing a bit short of the hazard

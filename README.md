@@ -29,7 +29,7 @@ A button in the pause menu (Esc) opens a settings popup, so you can adjust every
 |---|---|---|---|
 | `enabled` | bool | `false` | Master switch for stamping |
 | `marker-style` | string | `player` | `player` (your character icon), `x`, or `o` |
-| `marker-size` | int | `100` | Scale of the markers, as a percentage |
+| `marker-size` | int | `100` | Scale of `x`/`o` markers, as a percentage (icon markers always show at true size) |
 | `marker-color-r/g/b` | int | `235`/`60`/`60` | Color for `x`/`o` markers — pick it visually via the popup's color wheel rather than editing these directly |
 | `marker-opacity` | int | `160` | Opacity of the death markers (0–255) |
 | `max-markers` | int | `0` | Only keep the most recent N markers; `0` keeps all of them |

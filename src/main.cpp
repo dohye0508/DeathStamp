@@ -93,8 +93,13 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
         }
         if (!marker) return;
 
-        float sizeScale = static_cast<float>(Mod::get()->getSettingValue<int64_t>("marker-size")) / 100.f;
-        marker->setScale(marker->getScale() * sizeScale);
+        // Size only applies to the X/O shapes — the icon marker already
+        // tracks the live player's own vehicle size, and piling an
+        // independent multiplier on top of that stopped making sense.
+        if (style != "player") {
+            float sizeScale = static_cast<float>(Mod::get()->getSettingValue<int64_t>("marker-size")) / 100.f;
+            marker->setScale(marker->getScale() * sizeScale);
+        }
 
         m_fields->markers.push_back(marker);
 
@@ -133,7 +138,7 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
         ghost->setVisible(true);
         ghost->setColor(gm->colorForIdx(gm->getPlayerColor()));
         ghost->setSecondColor(gm->colorForIdx(gm->getPlayerColor2()));
-        ghost->setOpacity(static_cast<GLubyte>(opacity));
+        ghost->setCascadeOpacityEnabled(true);
         ghost->setID("death-stamp-marker"_spr);
         if (ghost->m_waveTrail) {
             ghost->m_waveTrail->setVisible(false);
@@ -144,6 +149,11 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
         // wiping out setRotation() when that call came first.
         applyPlayerMode(ghost, player, gm);
         ghost->setRotation(player->getRotation());
+
+        // Set after applyPlayerMode, not before — robot mode rebuilds its
+        // own sub-sprites when toggled/framed, and those were coming in at
+        // full opacity regardless of what was set on the ghost earlier.
+        ghost->setOpacity(static_cast<GLubyte>(opacity));
 
         // Add to the exact same parent the live player is in, so its
         // position needs no coordinate-space conversion at all. Nudged
@@ -382,7 +392,9 @@ class DeathStampSettingsPopup : public geode::Popup {
 protected:
     CCMenuItemSpriteExtra* m_enabledCheckbox = nullptr;
     CCLabelBMFont* m_styleValueLabel = nullptr;
+    CCLabelBMFont* m_sizeLabel = nullptr;
     CCLabelBMFont* m_sizeValueLabel = nullptr;
+    geode::SliderNode* m_sizeSlider = nullptr;
     CCScale9Sprite* m_colorSwatch = nullptr;
     geode::SliderNode* m_opacitySlider = nullptr;
     CCLabelBMFont* m_opacityLabel = nullptr;
@@ -416,12 +428,12 @@ protected:
         m_enabledCheckbox = CCMenuItemSpriteExtra::create(
             CCSprite::create(), this, menu_selector(DeathStampSettingsPopup::onToggleEnabled)
         );
-        m_enabledCheckbox->setPosition({labelX + 8.f, 110.f});
+        m_enabledCheckbox->setPosition({labelX + 8.f, 120.f});
         m_menu->addChild(m_enabledCheckbox);
 
         auto* enabledLabel = CCLabelBMFont::create("Enabled", "bigFont.fnt");
         enabledLabel->setAnchorPoint({0.f, 0.5f});
-        enabledLabel->setPosition({labelX + 24.f, 110.f});
+        enabledLabel->setPosition({labelX + 24.f, 120.f});
         enabledLabel->setScale(labelScale);
         root->addChild(enabledLabel);
 
@@ -429,39 +441,23 @@ protected:
         // option, so adding more shapes later doesn't need a wider popup.
         auto* styleLabel = CCLabelBMFont::create("Marker Shape", "bigFont.fnt");
         styleLabel->setAnchorPoint({0.f, 0.5f});
-        styleLabel->setPosition({labelX, 75.f});
+        styleLabel->setPosition({labelX, 88.f});
         styleLabel->setScale(labelScale);
         root->addChild(styleLabel);
 
-        m_menu->addChild(makeArrow_(false, 75.f, menu_selector(DeathStampSettingsPopup::onStylePrev)));
-        m_menu->addChild(makeArrow_(true, 75.f, menu_selector(DeathStampSettingsPopup::onStyleNext)));
+        m_menu->addChild(makeArrow_(false, 88.f, menu_selector(DeathStampSettingsPopup::onStylePrev)));
+        m_menu->addChild(makeArrow_(true, 88.f, menu_selector(DeathStampSettingsPopup::onStyleNext)));
 
         m_styleValueLabel = CCLabelBMFont::create("", "goldFont.fnt");
-        m_styleValueLabel->setPosition({70.f, 75.f});
+        m_styleValueLabel->setPosition({70.f, 88.f});
         m_styleValueLabel->setScale(0.5f);
         root->addChild(m_styleValueLabel);
 
-        // Row 3: marker size — same left/right cycle widget as marker shape,
-        // stepping by 10% at a time.
-        auto* sizeLabel = CCLabelBMFont::create("Marker Size", "bigFont.fnt");
-        sizeLabel->setAnchorPoint({0.f, 0.5f});
-        sizeLabel->setPosition({labelX, 40.f});
-        sizeLabel->setScale(labelScale);
-        root->addChild(sizeLabel);
-
-        m_menu->addChild(makeArrow_(false, 40.f, menu_selector(DeathStampSettingsPopup::onSizePrev)));
-        m_menu->addChild(makeArrow_(true, 40.f, menu_selector(DeathStampSettingsPopup::onSizeNext)));
-
-        m_sizeValueLabel = CCLabelBMFont::create("", "goldFont.fnt");
-        m_sizeValueLabel->setPosition({70.f, 40.f});
-        m_sizeValueLabel->setScale(0.5f);
-        root->addChild(m_sizeValueLabel);
-
-        // Row 4: marker color — opens GD's real color wheel instead of
+        // Row 3: marker color — opens GD's real color wheel instead of
         // cycling two presets.
         auto* colorLabel = CCLabelBMFont::create("Marker Color (X/O only)", "bigFont.fnt");
         colorLabel->setAnchorPoint({0.f, 0.5f});
-        colorLabel->setPosition({labelX, 5.f});
+        colorLabel->setPosition({labelX, 56.f});
         colorLabel->setScale(labelScale);
         root->addChild(colorLabel);
 
@@ -471,46 +467,71 @@ protected:
         auto* swatchBtn = CCMenuItemSpriteExtra::create(
             swatchBg, this, menu_selector(DeathStampSettingsPopup::onOpenColorPicker)
         );
-        swatchBtn->setPosition({70.f, 5.f});
+        swatchBtn->setPosition({70.f, 56.f});
         m_menu->addChild(swatchBtn);
 
-        // Row 5: opacity label + value, with its own slider row right below.
-        // Uses Geode's own SliderNode (not GD's native binding Slider) —
-        // the native one is anchored/sized for RobTop's own menus and kept
-        // rendering itself up near the row above no matter what position we
-        // gave it. SliderNode is a normal center-anchored cocos node, so
-        // setPosition puts its actual visual center where we ask.
+        // Row 4/5: opacity — the label sits on its own row, and the slider
+        // shares a row with the value number right next to it (instead of
+        // the value sitting up on the label row while the slider bar hangs
+        // alone below, disconnected from the number it belongs to). Uses
+        // Geode's own SliderNode, not GD's native binding Slider — that one
+        // is sized/anchored for RobTop's own menus and kept rendering itself
+        // in the wrong spot no matter what position it was given.
         auto* opacityLabel = CCLabelBMFont::create("Opacity", "bigFont.fnt");
         opacityLabel->setAnchorPoint({0.f, 0.5f});
-        opacityLabel->setPosition({labelX, -30.f});
+        opacityLabel->setPosition({labelX, 24.f});
         opacityLabel->setScale(labelScale);
         root->addChild(opacityLabel);
-
-        m_opacityLabel = CCLabelBMFont::create("", "goldFont.fnt");
-        m_opacityLabel->setPosition({108.f, -30.f});
-        m_opacityLabel->setScale(0.35f);
-        root->addChild(m_opacityLabel);
 
         m_opacitySlider = geode::SliderNode::create(
             [this](geode::SliderNode*, float value) { onOpacitySlider(value); }
         );
-        m_opacitySlider->setPosition({0.f, -65.f});
+        m_opacitySlider->setPosition({-35.f, -8.f});
         m_opacitySlider->setMin(20.f);
         m_opacitySlider->setMax(255.f);
         m_opacitySlider->setSnapStep(1.f);
         root->addChild(m_opacitySlider);
 
-        // Row 6: max markers
+        m_opacityLabel = CCLabelBMFont::create("", "goldFont.fnt");
+        m_opacityLabel->setPosition({108.f, -8.f});
+        m_opacityLabel->setScale(0.35f);
+        root->addChild(m_opacityLabel);
+
+        // Row 6/7: marker size — same label-then-slider-with-value layout as
+        // opacity. X/O only; disabled (and visibly greyed) when the marker
+        // shape is the player icon, which already sizes itself off the live
+        // player's own vehicle size.
+        m_sizeLabel = CCLabelBMFont::create("Marker Size", "bigFont.fnt");
+        m_sizeLabel->setAnchorPoint({0.f, 0.5f});
+        m_sizeLabel->setPosition({labelX, -40.f});
+        m_sizeLabel->setScale(labelScale);
+        root->addChild(m_sizeLabel);
+
+        m_sizeSlider = geode::SliderNode::create(
+            [this](geode::SliderNode*, float value) { onSizeSlider(value); }
+        );
+        m_sizeSlider->setPosition({-35.f, -72.f});
+        m_sizeSlider->setMin(75.f);
+        m_sizeSlider->setMax(125.f);
+        m_sizeSlider->setSnapStep(1.f);
+        root->addChild(m_sizeSlider);
+
+        m_sizeValueLabel = CCLabelBMFont::create("", "goldFont.fnt");
+        m_sizeValueLabel->setPosition({108.f, -72.f});
+        m_sizeValueLabel->setScale(0.35f);
+        root->addChild(m_sizeValueLabel);
+
+        // Row 8: max markers
         auto* maxLabel = CCLabelBMFont::create("Max Markers (0 = all)", "bigFont.fnt");
         maxLabel->setAnchorPoint({0.f, 0.5f});
-        maxLabel->setPosition({labelX, -100.f});
+        maxLabel->setPosition({labelX, -104.f});
         maxLabel->setScale(labelScale);
         root->addChild(maxLabel);
 
         m_maxInput = geode::TextInput::create(60.f, "0");
         m_maxInput->setCommonFilter(geode::CommonFilter::Uint);
         m_maxInput->setMaxCharCount(3);
-        m_maxInput->setPosition({105.f, -100.f});
+        m_maxInput->setPosition({105.f, -104.f});
         m_maxInput->setScale(0.85f);
         m_maxInput->setString(std::to_string(Mod::get()->getSettingValue<int64_t>("max-markers")));
         m_maxInput->setCallback([](std::string const& text) {
@@ -521,14 +542,14 @@ protected:
         });
         root->addChild(m_maxInput);
 
-        // Row 7: clear all markers right now, on demand, instead of an
+        // Row 9: clear all markers right now, on demand, instead of an
         // automatic "clear every retry" setting.
         auto* clearSprite = ButtonSprite::create("Clear All Markers", "bigFont.fnt", "GJ_button_06.png", 0.8f);
         clearSprite->setScale(0.7f);
         auto* clearBtn = CCMenuItemSpriteExtra::create(
             clearSprite, this, menu_selector(DeathStampSettingsPopup::onClearMarkers)
         );
-        clearBtn->setPosition({0.f, -135.f});
+        clearBtn->setPosition({0.f, -138.f});
         m_menu->addChild(clearBtn);
 
         refresh_();
@@ -555,14 +576,21 @@ protected:
         bool enabled = Mod::get()->getSettingValue<bool>("enabled");
         int opacity = Mod::get()->getSettingValue<int64_t>("marker-opacity");
         int64_t size = Mod::get()->getSettingValue<int64_t>("marker-size");
+        bool sizeApplies = kMarkerStyleValues[m_styleIndex] != std::string("player");
 
         m_enabledCheckbox->setSprite(checkSprite_(enabled));
         m_styleValueLabel->setString(kMarkerStyleLabels[m_styleIndex]);
-        m_sizeValueLabel->setString(fmt::format("{}%", size).c_str());
         m_colorSwatch->setColor(readMarkerColor());
 
         m_opacitySlider->setValue(static_cast<float>(opacity));
         m_opacityLabel->setString(fmt::format("{}/255", opacity).c_str());
+
+        m_sizeSlider->setValue(static_cast<float>(size));
+        m_sizeSlider->setEnabled(sizeApplies);
+        m_sizeValueLabel->setString(sizeApplies ? fmt::format("{}%", size).c_str() : "n/a");
+        ccColor3B sizeTint = sizeApplies ? ccc3(255, 255, 255) : ccc3(140, 140, 140);
+        m_sizeLabel->setColor(sizeTint);
+        m_sizeValueLabel->setColor(sizeTint);
     }
 
     static CCSprite* checkSprite_(bool checked) {
@@ -589,18 +617,10 @@ protected:
         refresh_();
     }
 
-    void onSizePrev(CCObject*) {
-        int64_t size = Mod::get()->getSettingValue<int64_t>("marker-size") - 10;
-        if (size < 50) size = 50;
+    void onSizeSlider(float value) {
+        int64_t size = static_cast<int64_t>(std::lround(std::clamp(value, 75.f, 125.f)));
         Mod::get()->setSettingValue<int64_t>("marker-size", size);
-        refresh_();
-    }
-
-    void onSizeNext(CCObject*) {
-        int64_t size = Mod::get()->getSettingValue<int64_t>("marker-size") + 10;
-        if (size > 300) size = 300;
-        Mod::get()->setSettingValue<int64_t>("marker-size", size);
-        refresh_();
+        m_sizeValueLabel->setString(fmt::format("{}%", size).c_str());
     }
 
     void onOpenColorPicker(CCObject*) {
@@ -624,7 +644,7 @@ protected:
 public:
     static DeathStampSettingsPopup* create() {
         auto ret = new DeathStampSettingsPopup();
-        if (ret && ret->init(340.f, 320.f)) {
+        if (ret && ret->init(340.f, 330.f)) {
             ret->autorelease();
             return ret;
         }
