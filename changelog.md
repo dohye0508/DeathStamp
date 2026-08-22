@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.4.10
+
+- Removed the forward nudge on death markers — they now place at the exact death position, no offset
+
 ## v1.4.9
 
 - Fixed markers rendering way too bright/washed out in every vehicle mode, not just robot — the offscreen texture used to flatten the icon marker was being displayed with the wrong blend mode, which brightened every translucent pixel more than it should

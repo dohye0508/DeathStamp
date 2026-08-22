@@ -169,9 +169,8 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
         flattened->setOpacity(static_cast<GLubyte>(opacity));
         flattened->setRotation(player->getRotation());
 
-        // Nudged slightly forward — see deathNudgeOffset_.
         player->getParent()->addChild(flattened, 9999);
-        flattened->setPosition(player->getPosition() + deathNudgeOffset_(player));
+        flattened->setPosition(player->getPosition());
         return flattened;
     }
 
@@ -241,9 +240,8 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
         }
         marker->setID("death-stamp-marker"_spr);
 
-        // Nudged slightly forward — see deathNudgeOffset_.
         player->getParent()->addChild(marker, 9999);
-        marker->setPosition(player->getPosition() + deathNudgeOffset_(player));
+        marker->setPosition(player->getPosition());
         return marker;
     }
 
@@ -307,24 +305,6 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
             size, size, CCSize(static_cast<float>(size), static_cast<float>(size))
         );
         return tex;
-    }
-
-    // GD's hitbox is a bit smaller than the player's sprite, so right at the
-    // moment of death the sprite (and therefore the marker) can look like it
-    // hasn't quite reached whatever killed it yet. Nudges the marker a
-    // little further along the direction the player was moving so it
-    // visually lands on/in the hazard — a rough estimate from
-    // m_isGoingLeft/m_yVelocity, not exact physics.
-    static CCPoint deathNudgeOffset_(PlayerObject* player) {
-        constexpr float horizontalNudge = 10.5f;
-        constexpr float verticalNudge = 10.5f;
-
-        float dx = player->m_isGoingLeft ? -horizontalNudge : horizontalNudge;
-        float dy = 0.f;
-        if (player->m_yVelocity > 50.0) dy = verticalNudge;
-        else if (player->m_yVelocity < -50.0) dy = -verticalNudge;
-
-        return CCPoint(dx, dy);
     }
 
     // PlayerObject::create() always gives you a cube — the vehicle a player
