@@ -6,15 +6,12 @@
 #include <Geode/ui/Popup.hpp>
 #include <Geode/ui/TextInput.hpp>
 #include <Geode/ui/SliderNode.hpp>
-#include <Geode/cocos/draw_nodes/CCDrawNode.h>
 #include <Geode/cocos/extensions/GUI/CCControlExtension/CCControlColourPicker.h>
 #include <Geode/cocos/extensions/GUI/CCControlExtension/CCScale9Sprite.h>
 #include <algorithm>
 #include <cmath>
 
 using namespace geode::prelude;
-
-constexpr float kDeathStampPi = 3.14159265358979323846f;
 
 static ccColor3B readMarkerColor() {
     auto* mod = Mod::get();
@@ -149,84 +146,101 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
         ghost->setRotation(player->getRotation());
 
         // Add to the exact same parent the live player is in, so its
-        // position needs no coordinate-space conversion at all.
+        // position needs no coordinate-space conversion at all. Nudged
+        // slightly forward — see deathNudgeOffset_.
         player->getParent()->addChild(ghost, 9999);
-        ghost->setPosition(player->getPosition());
+        ghost->setPosition(player->getPosition() + deathNudgeOffset_(player));
         return ghost;
     }
 
-    // Drawn as real filled shapes, not a bitmap-font glyph — CCLabelBMFont's
-    // "X"/"O" glyphs come from GD's font atlas and looked like stray text,
-    // not a marker shape. Every quad here is filled via drawPolygon (no
-    // border), which is the same drawing path GD's own translucent editor
-    // overlays (e.g. the group-select box) use — baking the opacity into
-    // each quad's alpha at creation time is what actually shows up correctly,
-    // unlike calling setOpacity() on the node after the fact.
+    // "O" uses the small circle sprite from GD's own color-wheel UI (already
+    // loaded, since this mod's color picker popup uses that exact sprite
+    // sheet) instead of a hand-drawn ring — a hand-drawn CCDrawNode circle
+    // came out visibly rough/faceted at marker size in this GD build no
+    // matter how many segments it was built from. The "X" is built from
+    // plain rectangles for the same reason (see createXMarker_).
     CCNode* createShapeMarker(PlayerObject* player, std::string const& style) {
         int opacity = Mod::get()->getSettingValue<int64_t>("marker-opacity");
         ccColor3B color = readMarkerColor();
-        float alpha = static_cast<float>(opacity) / 255.f;
-        ccColor4F c = ccc4f(color.r / 255.f, color.g / 255.f, color.b / 255.f, alpha);
 
-        auto* draw = CCDrawNode::create();
-        draw->setID("death-stamp-marker"_spr);
-
+        CCNode* marker;
         if (style == "x") {
-            drawXShape_(draw, 9.f, 4.f, c);
+            marker = createXMarker_(color, opacity);
         } else {
-            drawRing_(draw, 9.5f, 6.f, c);
+            auto* circle = CCSprite::createWithSpriteFrameName("menuCircleWhite.png");
+            circle->setColor(color);
+            circle->setOpacity(static_cast<GLubyte>(opacity));
+            circle->setScale(0.55f);
+            marker = circle;
         }
+        marker->setID("death-stamp-marker"_spr);
 
-        player->getParent()->addChild(draw, 9999);
-        draw->setPosition(player->getPosition());
-        return draw;
+        // Nudged slightly forward — see deathNudgeOffset_.
+        player->getParent()->addChild(marker, 9999);
+        marker->setPosition(player->getPosition() + deathNudgeOffset_(player));
+        return marker;
     }
 
-    // An X as three non-overlapping rectangles (one full bar, the other bar
-    // split around it), rotated 45°, instead of two full diagonal bars laid
-    // across each other — two overlapping translucent quads double up their
-    // alpha where they cross, leaving a visibly darker/more-opaque square
-    // right in the middle of the X.
-    static void drawXShape_(CCDrawNode* draw, float armLength, float thickness, ccColor4F const& c) {
-        float L = armLength;
-        float t = thickness / 2.f;
-        constexpr float kCos45 = 0.70710678f;
+    // The X is three plain rectangles (one full bar, the other bar split
+    // around it), rotated 45° as a group — not two full diagonal bars laid
+    // across each other, which would double up their translucent fill where
+    // they cross and show up as a visibly darker square at the center. Each
+    // bar is a real CCSprite stretched from a 1x1 texture (see
+    // whitePixelTexture_), not hand-drawn geometry.
+    static CCNode* createXMarker_(ccColor3B color, int opacity) {
+        constexpr float armLength = 9.f;
+        constexpr float thickness = 4.f;
+        constexpr float half = thickness / 2.f;
 
-        auto addQuad = [&](float x0, float x1, float y0, float y1) {
-            CCPoint local[4] = {{x0, y0}, {x1, y0}, {x1, y1}, {x0, y1}};
-            CCPoint pts[4];
-            for (int i = 0; i < 4; i++) {
-                pts[i] = CCPoint(
-                    (local[i].x - local[i].y) * kCos45,
-                    (local[i].x + local[i].y) * kCos45
-                );
-            }
-            draw->drawPolygon(pts, 4, c, 0.f, ccc4f(0.f, 0.f, 0.f, 0.f));
+        auto* root = CCNode::create();
+        root->setRotation(45.f);
+
+        auto addBar = [&](float width, float height, float x, float y) {
+            auto* bar = CCSprite::createWithTexture(whitePixelTexture_());
+            bar->setColor(color);
+            bar->setOpacity(static_cast<GLubyte>(opacity));
+            bar->setScaleX(width);
+            bar->setScaleY(height);
+            bar->setPosition(CCPoint(x, y));
+            root->addChild(bar);
         };
 
-        addQuad(-L, L, -t, t);   // one full bar
-        addQuad(-t, t, t, L);    // other bar, upper half only
-        addQuad(-t, t, -L, -t);  // other bar, lower half only — skips the
-                                 // middle square the first bar already covers
+        addBar(armLength * 2.f, thickness, 0.f, 0.f);                          // full bar
+        addBar(thickness, armLength - half, 0.f, (armLength + half) / 2.f);    // other bar, top half
+        addBar(thickness, armLength - half, 0.f, -(armLength + half) / 2.f);   // other bar, bottom half
+
+        return root;
     }
 
-    // An "O" as a ring built out of small quads between two radii, since
-    // CCDrawNode has no direct "draw circle outline" call. Adjacent quads
-    // meet exactly edge-to-edge (same angle => same point), so there's no
-    // overlapping fill between them.
-    static void drawRing_(CCDrawNode* draw, float outerRadius, float innerRadius, ccColor4F const& c) {
-        constexpr int segments = 40;
-        for (int i = 0; i < segments; i++) {
-            float a0 = static_cast<float>(i) / segments * 2.f * kDeathStampPi;
-            float a1 = static_cast<float>(i + 1) / segments * 2.f * kDeathStampPi;
-            CCPoint quad[4] = {
-                {outerRadius * cosf(a0), outerRadius * sinf(a0)},
-                {outerRadius * cosf(a1), outerRadius * sinf(a1)},
-                {innerRadius * cosf(a1), innerRadius * sinf(a1)},
-                {innerRadius * cosf(a0), innerRadius * sinf(a0)}
-            };
-            draw->drawPolygon(quad, 4, c, 0.f, ccc4f(0.f, 0.f, 0.f, 0.f));
+    // A single reusable 1x1 white texture used to build solid-color shapes —
+    // never released, since it's a tiny (4-byte) cache meant to live for the
+    // whole process.
+    static CCTexture2D* whitePixelTexture_() {
+        static CCTexture2D* tex = nullptr;
+        if (!tex) {
+            unsigned char pixel[4] = {255, 255, 255, 255};
+            tex = new CCTexture2D();
+            tex->initWithData(pixel, kCCTexture2DPixelFormat_RGBA8888, 1, 1, CCSize(1.f, 1.f));
         }
+        return tex;
+    }
+
+    // GD's hitbox is a bit smaller than the player's sprite, so right at the
+    // moment of death the sprite (and therefore the marker) can look like it
+    // hasn't quite reached whatever killed it yet. Nudges the marker a
+    // little further along the direction the player was moving so it
+    // visually lands on/in the hazard — a rough estimate from
+    // m_isGoingLeft/m_yVelocity, not exact physics.
+    static CCPoint deathNudgeOffset_(PlayerObject* player) {
+        constexpr float horizontalNudge = 8.f;
+        constexpr float verticalNudge = 8.f;
+
+        float dx = player->m_isGoingLeft ? -horizontalNudge : horizontalNudge;
+        float dy = 0.f;
+        if (player->m_yVelocity > 50.0) dy = verticalNudge;
+        else if (player->m_yVelocity < -50.0) dy = -verticalNudge;
+
+        return CCPoint(dx, dy);
     }
 
     // PlayerObject::create() always gives you a cube — the vehicle a player

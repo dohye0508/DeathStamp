@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.4
+
+- X/O markers no longer hand-drawn — the custom-drawn shapes kept looking rough/broken no matter how many segments they were built from, so they're rebuilt from real game sprites and plain rectangles instead
+- Markers now nudge slightly forward in the direction the player was moving at death, so small markers visually land on the hazard instead of floating just short of it
+
 ## v1.4.3
 
 - X/O markers no longer show a darker patch where their own strokes crossed/overlapped — the X is now built from non-overlapping pieces instead of two crossing bars laid on top of each other, and the O is smoother (more segments)
