@@ -4,7 +4,7 @@ A [Geode](https://geode-sdk.org/) mod for Geometry Dash that marks every spot yo
 
 ## What it does
 
-While playing your own level, Death Stamp intercepts every death and drops a frozen copy of your character — in your current colors and icon — pinned at the exact point of impact, then lets the level reset as normal.
+While playing your own level, Death Stamp intercepts every death and drops a frozen copy of your character — matching your colors, icon, vehicle (ship/ball/UFO/wave/robot/spider/swing), size, gravity, and angle at the moment of impact — pinned at the exact point you died, then lets the level reset as normal.
 
 Play a few attempts with markers accumulating (instead of clearing each attempt) and you get a rough death heatmap of your own level — no guesswork about which section is actually the hard one.
 
