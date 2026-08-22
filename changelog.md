@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.1.3
+
+- The in-game description was pulling from README.md, which is meant for developers on GitHub — it showed a broken table and a "Building from source" section players don't need. Added a separate about.md with just what a player needs to know.
+
 ## v1.1.2
 
 - Rewrote the in-game settings text to be clearer for players, not just developers
