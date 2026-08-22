@@ -19,6 +19,20 @@ static ccColor3B colorForMarkerColorSetting(std::string const& name) {
     return ccc3(235, 60, 60);
 }
 
+// GD's built-in bitmap fonts (bigFont.fnt/goldFont.fnt) only have Latin
+// glyphs baked into their texture atlas — Korean text silently draws as
+// nothing (zero-width) instead of erroring, which is why the popup's UI
+// text has to stay English even though the mod's settings descriptions
+// and about.md (rendered through Geode's own text widgets, not GD's) can
+// be Korean.
+static constexpr const char* kMarkerStyleValues[] = {"player", "x", "o"};
+static constexpr const char* kMarkerStyleLabels[] = {"Icon", "X", "O"};
+static constexpr int kMarkerStyleCount = 3;
+
+static constexpr const char* kMarkerColorValues[] = {"red", "green"};
+static constexpr const char* kMarkerColorLabels[] = {"Red", "Green"};
+static constexpr int kMarkerColorCount = 2;
+
 class $modify(DeathStampPlayLayer, PlayLayer) {
     struct Fields {
         std::vector<CCNode*> markers;
@@ -235,18 +249,29 @@ class DeathStampSettingsPopup : public geode::Popup {
 protected:
     CCMenuItemSpriteExtra* m_enabledCheckbox = nullptr;
     CCMenuItemSpriteExtra* m_clearCheckbox = nullptr;
-    CCMenuItemSpriteExtra* m_styleButtons[3] = {nullptr, nullptr, nullptr};
-    CCMenuItemSpriteExtra* m_colorButtons[2] = {nullptr, nullptr};
+    CCLabelBMFont* m_styleValueLabel = nullptr;
+    CCLabelBMFont* m_colorValueLabel = nullptr;
     Slider* m_opacitySlider = nullptr;
     CCLabelBMFont* m_opacityLabel = nullptr;
     geode::TextInput* m_maxInput = nullptr;
     CCMenu* m_menu = nullptr;
+    int m_styleIndex = 0;
+    int m_colorIndex = 0;
 
     bool init(float width, float height) {
         if (!Popup::init(width, height)) return false;
 
         setID("death-stamp-settings-popup"_spr);
-        setTitle("Death Stamp 설정");
+        setTitle("Death Stamp Settings");
+
+        auto style = Mod::get()->getSettingValue<std::string>("marker-style");
+        auto colorName = Mod::get()->getSettingValue<std::string>("marker-color");
+        for (int i = 0; i < kMarkerStyleCount; i++) {
+            if (style == kMarkerStyleValues[i]) m_styleIndex = i;
+        }
+        for (int i = 0; i < kMarkerColorCount; i++) {
+            if (colorName == kMarkerColorValues[i]) m_colorIndex = i;
+        }
 
         auto* root = CCNode::create();
         root->setPosition(m_mainLayer->getContentSize() * 0.5f);
@@ -263,12 +288,12 @@ protected:
         m_enabledCheckbox = CCMenuItemSpriteExtra::create(
             CCSprite::create(), this, menu_selector(DeathStampSettingsPopup::onToggleEnabled)
         );
-        m_enabledCheckbox->setPosition({labelX + 8.f, 108.f});
+        m_enabledCheckbox->setPosition({labelX + 8.f, 100.f});
         m_menu->addChild(m_enabledCheckbox);
 
-        auto* enabledLabel = CCLabelBMFont::create("Death Stamp 켜기", "bigFont.fnt");
+        auto* enabledLabel = CCLabelBMFont::create("Enabled", "bigFont.fnt");
         enabledLabel->setAnchorPoint({0.f, 0.5f});
-        enabledLabel->setPosition({labelX + 24.f, 108.f});
+        enabledLabel->setPosition({labelX + 24.f, 100.f});
         enabledLabel->setScale(labelScale);
         root->addChild(enabledLabel);
 
@@ -276,83 +301,76 @@ protected:
         m_clearCheckbox = CCMenuItemSpriteExtra::create(
             CCSprite::create(), this, menu_selector(DeathStampSettingsPopup::onToggleClear)
         );
-        m_clearCheckbox->setPosition({labelX + 8.f, 78.f});
+        m_clearCheckbox->setPosition({labelX + 8.f, 68.f});
         m_menu->addChild(m_clearCheckbox);
 
-        auto* clearLabel = CCLabelBMFont::create("재시도마다 표시 지우기", "bigFont.fnt");
+        auto* clearLabel = CCLabelBMFont::create("Clear Each Retry", "bigFont.fnt");
         clearLabel->setAnchorPoint({0.f, 0.5f});
-        clearLabel->setPosition({labelX + 24.f, 78.f});
+        clearLabel->setPosition({labelX + 24.f, 68.f});
         clearLabel->setScale(labelScale);
         root->addChild(clearLabel);
 
-        // Row 3: marker style
-        auto* styleLabel = CCLabelBMFont::create("마커 모양", "bigFont.fnt");
+        // Row 3: marker style — left/right cycle instead of one button per
+        // option, so adding more shapes later doesn't need a wider popup.
+        auto* styleLabel = CCLabelBMFont::create("Marker Shape", "bigFont.fnt");
         styleLabel->setAnchorPoint({0.f, 0.5f});
-        styleLabel->setPosition({labelX, 38.f});
+        styleLabel->setPosition({labelX, 30.f});
         styleLabel->setScale(labelScale);
         root->addChild(styleLabel);
 
-        m_styleNames[0] = "아이콘"; m_styleNames[1] = "X"; m_styleNames[2] = "O";
-        m_styleValues[0] = "player"; m_styleValues[1] = "x"; m_styleValues[2] = "o";
-        const float styleX[3] = {-15.f, 45.f, 100.f};
-        for (int i = 0; i < 3; i++) {
-            m_styleButtons[i] = CCMenuItemSpriteExtra::create(
-                CCSprite::create(), this, menu_selector(DeathStampSettingsPopup::onPickStyle)
-            );
-            m_styleButtons[i]->setTag(i);
-            m_styleButtons[i]->setPosition({styleX[i], 38.f});
-            m_menu->addChild(m_styleButtons[i]);
-        }
+        m_menu->addChild(makeArrow_(false, 30.f, menu_selector(DeathStampSettingsPopup::onStylePrev)));
+        m_menu->addChild(makeArrow_(true, 30.f, menu_selector(DeathStampSettingsPopup::onStyleNext)));
+
+        m_styleValueLabel = CCLabelBMFont::create("", "goldFont.fnt");
+        m_styleValueLabel->setPosition({70.f, 30.f});
+        m_styleValueLabel->setScale(0.5f);
+        root->addChild(m_styleValueLabel);
 
         // Row 4: marker color
-        auto* colorLabel = CCLabelBMFont::create("마커 색 (X/O 전용)", "bigFont.fnt");
+        auto* colorLabel = CCLabelBMFont::create("Marker Color (X/O only)", "bigFont.fnt");
         colorLabel->setAnchorPoint({0.f, 0.5f});
-        colorLabel->setPosition({labelX, 4.f});
+        colorLabel->setPosition({labelX, -4.f});
         colorLabel->setScale(labelScale);
         root->addChild(colorLabel);
 
-        m_colorNames[0] = "빨강"; m_colorNames[1] = "초록";
-        m_colorValues[0] = "red"; m_colorValues[1] = "green";
-        const float colorX[2] = {40.f, 95.f};
-        for (int i = 0; i < 2; i++) {
-            m_colorButtons[i] = CCMenuItemSpriteExtra::create(
-                CCSprite::create(), this, menu_selector(DeathStampSettingsPopup::onPickColor)
-            );
-            m_colorButtons[i]->setTag(i);
-            m_colorButtons[i]->setPosition({colorX[i], 4.f});
-            m_menu->addChild(m_colorButtons[i]);
-        }
+        m_menu->addChild(makeArrow_(false, -4.f, menu_selector(DeathStampSettingsPopup::onColorPrev)));
+        m_menu->addChild(makeArrow_(true, -4.f, menu_selector(DeathStampSettingsPopup::onColorNext)));
+
+        m_colorValueLabel = CCLabelBMFont::create("", "goldFont.fnt");
+        m_colorValueLabel->setPosition({70.f, -4.f});
+        m_colorValueLabel->setScale(0.5f);
+        root->addChild(m_colorValueLabel);
 
         // Row 5: opacity
-        auto* opacityLabel = CCLabelBMFont::create("표시 진하기", "bigFont.fnt");
+        auto* opacityLabel = CCLabelBMFont::create("Opacity", "bigFont.fnt");
         opacityLabel->setAnchorPoint({0.f, 0.5f});
-        opacityLabel->setPosition({labelX, -32.f});
+        opacityLabel->setPosition({labelX, -40.f});
         opacityLabel->setScale(labelScale);
         root->addChild(opacityLabel);
 
         m_opacitySlider = Slider::create(
             this, menu_selector(DeathStampSettingsPopup::onOpacitySlider), 0.6f
         );
-        m_opacitySlider->setPosition({-25.f, -56.f});
+        m_opacitySlider->setPosition({-25.f, -64.f});
         m_opacitySlider->setScale(0.6f);
         m_menu->addChild(m_opacitySlider);
 
         m_opacityLabel = CCLabelBMFont::create("", "goldFont.fnt");
-        m_opacityLabel->setPosition({108.f, -32.f});
+        m_opacityLabel->setPosition({108.f, -40.f});
         m_opacityLabel->setScale(0.35f);
         root->addChild(m_opacityLabel);
 
         // Row 6: max markers
-        auto* maxLabel = CCLabelBMFont::create("최근 몇 개만 (0=전체)", "bigFont.fnt");
+        auto* maxLabel = CCLabelBMFont::create("Max Markers (0 = all)", "bigFont.fnt");
         maxLabel->setAnchorPoint({0.f, 0.5f});
-        maxLabel->setPosition({labelX, -80.f});
+        maxLabel->setPosition({labelX, -96.f});
         maxLabel->setScale(labelScale);
         root->addChild(maxLabel);
 
         m_maxInput = geode::TextInput::create(60.f, "0");
         m_maxInput->setCommonFilter(geode::CommonFilter::Uint);
         m_maxInput->setMaxCharCount(3);
-        m_maxInput->setPosition({105.f, -80.f});
+        m_maxInput->setPosition({105.f, -96.f});
         m_maxInput->setScale(0.85f);
         m_maxInput->setString(std::to_string(Mod::get()->getSettingValue<int64_t>("max-markers")));
         m_maxInput->setCallback([](std::string const& text) {
@@ -367,24 +385,24 @@ protected:
         return true;
     }
 
+    CCMenuItemSpriteExtra* makeArrow_(bool isRight, float y, SEL_MenuHandler sel) {
+        auto* sprite = ButtonSprite::create(isRight ? ">" : "<", "bigFont.fnt", "GJ_button_04.png", 0.9f);
+        sprite->setScale(0.5f);
+        auto* item = CCMenuItemSpriteExtra::create(sprite, this, sel);
+        item->setPosition({isRight ? 100.f : 40.f, y});
+        return item;
+    }
+
     void refresh_() {
         bool enabled = Mod::get()->getSettingValue<bool>("enabled");
         bool clear = Mod::get()->getSettingValue<bool>("clear-on-new-attempt");
-        auto style = Mod::get()->getSettingValue<std::string>("marker-style");
-        auto colorName = Mod::get()->getSettingValue<std::string>("marker-color");
         int opacity = Mod::get()->getSettingValue<int64_t>("marker-opacity");
 
         m_enabledCheckbox->setSprite(checkSprite_(enabled));
         m_clearCheckbox->setSprite(checkSprite_(clear));
 
-        for (int i = 0; i < 3; i++) {
-            bool selected = style == m_styleValues[i];
-            m_styleButtons[i]->setSprite(pillSprite_(m_styleNames[i], selected));
-        }
-        for (int i = 0; i < 2; i++) {
-            bool selected = colorName == m_colorValues[i];
-            m_colorButtons[i]->setSprite(pillSprite_(m_colorNames[i], selected));
-        }
+        m_styleValueLabel->setString(kMarkerStyleLabels[m_styleIndex]);
+        m_colorValueLabel->setString(kMarkerColorLabels[m_colorIndex]);
 
         m_opacitySlider->setValue(
             std::clamp(static_cast<float>(opacity - 20) / (255.f - 20.f), 0.f, 1.f)
@@ -396,15 +414,6 @@ protected:
         return CCSprite::createWithSpriteFrameName(
             checked ? "GJ_checkOn_001.png" : "GJ_checkOff_001.png"
         );
-    }
-
-    static ButtonSprite* pillSprite_(std::string const& text, bool selected) {
-        auto* sprite = ButtonSprite::create(
-            text.c_str(), "bigFont.fnt",
-            selected ? "GJ_button_01.png" : "GJ_button_04.png", 0.8f
-        );
-        sprite->setScale(0.55f);
-        return sprite;
     }
 
     void onToggleEnabled(CCObject*) {
@@ -419,17 +428,27 @@ protected:
         refresh_();
     }
 
-    void onPickStyle(CCObject* sender) {
-        int idx = static_cast<CCNode*>(sender)->getTag();
-        if (idx < 0 || idx > 2) return;
-        Mod::get()->setSettingValue<std::string>("marker-style", m_styleValues[idx]);
+    void onStylePrev(CCObject*) {
+        m_styleIndex = (m_styleIndex - 1 + kMarkerStyleCount) % kMarkerStyleCount;
+        Mod::get()->setSettingValue<std::string>("marker-style", kMarkerStyleValues[m_styleIndex]);
         refresh_();
     }
 
-    void onPickColor(CCObject* sender) {
-        int idx = static_cast<CCNode*>(sender)->getTag();
-        if (idx < 0 || idx > 1) return;
-        Mod::get()->setSettingValue<std::string>("marker-color", m_colorValues[idx]);
+    void onStyleNext(CCObject*) {
+        m_styleIndex = (m_styleIndex + 1) % kMarkerStyleCount;
+        Mod::get()->setSettingValue<std::string>("marker-style", kMarkerStyleValues[m_styleIndex]);
+        refresh_();
+    }
+
+    void onColorPrev(CCObject*) {
+        m_colorIndex = (m_colorIndex - 1 + kMarkerColorCount) % kMarkerColorCount;
+        Mod::get()->setSettingValue<std::string>("marker-color", kMarkerColorValues[m_colorIndex]);
+        refresh_();
+    }
+
+    void onColorNext(CCObject*) {
+        m_colorIndex = (m_colorIndex + 1) % kMarkerColorCount;
+        Mod::get()->setSettingValue<std::string>("marker-color", kMarkerColorValues[m_colorIndex]);
         refresh_();
     }
 
@@ -441,16 +460,10 @@ protected:
         m_opacityLabel->setString(fmt::format("{}/255", opacity).c_str());
     }
 
-private:
-    std::string m_styleNames[3];
-    std::string m_styleValues[3];
-    std::string m_colorNames[2];
-    std::string m_colorValues[2];
-
 public:
     static DeathStampSettingsPopup* create() {
         auto ret = new DeathStampSettingsPopup();
-        if (ret && ret->init(340.f, 300.f)) {
+        if (ret && ret->init(340.f, 320.f)) {
             ret->autorelease();
             return ret;
         }

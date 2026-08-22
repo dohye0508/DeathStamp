@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.3.1
+
+- Fixed the settings popup text rendering broken — GD's built-in fonts don't have Korean glyphs, so anything Korean in there was drawing as blank space. Popup text is English now.
+- Marker shape/color pickers are now a left/right cycle instead of one button per option
+
 ## v1.3.0
 
 - The pause-menu button now opens a settings popup instead of toggling on/off directly
