@@ -78,9 +78,12 @@ class $modify(DeathStampPlayLayer, PlayLayer) {
         ghost->setColor(gm->colorForIdx(gm->getPlayerColor()));
         ghost->setSecondColor(gm->colorForIdx(gm->getPlayerColor2()));
         ghost->setOpacity(static_cast<GLubyte>(opacity));
-        ghost->setRotation(player->getRotation());
         ghost->setID("death-stamp-marker"_spr);
+        // Applied before rotation: toggleFlyMode/toggleRollMode/etc. reset
+        // the player's rotation as part of switching vehicles, which was
+        // wiping out setRotation() when that call came first.
         applyPlayerMode(ghost, player, gm);
+        ghost->setRotation(player->getRotation());
         if (ghost->m_waveTrail) {
             ghost->m_waveTrail->setVisible(false);
         }
