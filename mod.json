@@ -4,7 +4,7 @@
         "win": "2.2081",
         "android": "2.2081"
     },
-    "version": "v1.4.2",
+    "version": "v1.4.3",
     "id": "dohye0508.deathstamp",
     "name": "Death Stamp",
     "developer": "Robinted",
@@ -31,6 +31,14 @@
             "description": "죽은 자리에 남는 표시 모양이에요. player / x / o 중 하나.",
             "type": "string",
             "default": "player"
+        },
+        "marker-size": {
+            "name": "마커 크기",
+            "description": "죽은 자리에 남는 표시의 크기예요. 100이면 원래 크기.",
+            "type": "int",
+            "default": 100,
+            "min": 50,
+            "max": 300
         },
         "marker-color-r": {
             "name": "마커 색 (R)",

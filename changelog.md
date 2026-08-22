@@ -1,5 +1,10 @@
 # Changelog
 
+## v1.4.3
+
+- X/O markers no longer show a darker patch where their own strokes crossed/overlapped — the X is now built from non-overlapping pieces instead of two crossing bars laid on top of each other, and the O is smoother (more segments)
+- Added a Marker Size setting, so markers can be scaled up or down independent of everything else
+
 ## v1.4.2
 
 - X/O markers are drawn shapes again, not text — the "text glyph" fix from the last update looked like a stray font character instead of an actual X/O, so they're back to real filled shapes, just drawn in a way that actually respects opacity this time

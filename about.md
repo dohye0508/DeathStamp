@@ -13,6 +13,7 @@ Leaves a marker everywhere you died, so you can see at a glance which parts of a
 
 - **Enabled** — master switch, off by default
 - **Marker Shape** — your character icon, an X, or an O
+- **Marker Size** — scale markers up or down
 - **Marker Color** — tap the swatch to pick any color from GD's own color wheel (X/O markers only)
 - **Opacity** — how solid the markers look
 - **Max Markers (0 = all)** — cap how many markers stick around at once; 0 keeps all of them
